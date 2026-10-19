@@ -10,7 +10,7 @@
 - スコアに応じて架空のゲーム内段位認定
 
 ## 実行
-index.htmlをブラウザで開く。物理演算ライブラリ Matter.js v0.20.0 はMITライセンス。音声はWeb Audioと端末の読み上げ音声による試作版で、肉声の録音素材は未収録。
+index.htmlをブラウザで開く。物理演算ライブラリ Matter.js v0.20.0 は vendor/ にMITライセンス文書とともに同梱しているためCDNやビルドは不要。音声はWeb Audioと端末の読み上げ音声による試作版で、肉声の録音素材は未収録。
 
 ## 公開
 リポジトリをPublicに変更し、Settings → Pages → Build and deploymentで Source=Deploy from a branch、branch=main、folder=/(root) を指定して保存。公開後の想定URLは https://yr2610.github.io/ddj-game/ です。
