@@ -81,16 +81,56 @@
             }
         }
     };
-    function speak(s) {
-        if(muted||!voiceEnabled||!('speechSynthesis' in window))return;
+    // 日本語の音声一覧はAndroid等で遅延して届くため、voiceschangedでも更新する。
+    let japaneseVoices=[];
+    let currentUtterance=null;
+    let speechDeadline=0;
+    function refreshVoices() {
+        if(!('speechSynthesis' in window))return;
         try {
-            const a=window.speechSynthesis;a.cancel();
-            const u=new SpeechSynthesisUtterance(s);
-            u.lang='ja-JP';u.rate=1.4;u.pitch=.8;u.volume=.9;
-            const v=a.getVoices().find(v=>v.lang&&v.lang.toLowerCase().startsWith('ja'));
-            if(v)u.voice=v;
-            a.speak(u);
+            japaneseVoices=window.speechSynthesis.getVoices().filter(v=>/^ja(?:-|$)/i.test(v.lang||''));
         }catch (_) {}
+    }
+    function stopSpeech() {
+        if('speechSynthesis' in window) {
+            try {window.speechSynthesis.cancel()}catch (_) {}
+        }
+        currentUtterance=null;speechDeadline=0;
+    }
+    if('speechSynthesis' in window) {
+        refreshVoices();
+        if(window.speechSynthesis.addEventListener) {
+            window.speechSynthesis.addEventListener('voiceschanged',refreshVoices);
+        }
+    }
+    function speak(s,urgent=false) {
+        if(muted||!voiceEnabled||!('speechSynthesis' in window)||!('SpeechSynthesisUtterance' in window))return;
+        try {
+            const a=window.speechSynthesis;
+            const now=performance.now();
+            // 毎回cancel()するとモバイル環境で無音になることがある。
+            // 通常の掛け声はキューを溜めず間引き、重要な宣告だけ優先する。
+            if(urgent)stopSpeech();
+            else if(currentUtterance&&now<speechDeadline)return;
+            else if(currentUtterance&&now>=speechDeadline)stopSpeech();
+            if(!urgent&&(a.speaking||a.pending))return;
+            refreshVoices();
+            const u=new SpeechSynthesisUtterance(s);
+            u.lang='ja-JP';u.rate=1.25;u.pitch=.8;u.volume=1;
+            if(japaneseVoices.length)u.voice=japaneseVoices.find(v=>v.localService)||japaneseVoices[0];
+            currentUtterance=u;
+            speechDeadline=now+Math.min(3500,Math.max(1300,700+s.length*210));
+            u.onend=()=>{if(currentUtterance===u){currentUtterance=null;speechDeadline=0}};
+            u.onerror=e=>{
+                if(currentUtterance===u){currentUtterance=null;speechDeadline=0}
+                console.warn('音声合成に失敗しました:',e.error);
+            };
+            if(a.paused)a.resume();
+            a.speak(u);
+        }catch (e) {
+            currentUtterance=null;speechDeadline=0;
+            console.warn('音声合成が利用できません:',e);
+        }
     }
     function hint(s){ui.hint.textContent=s}
     function notify(s,ms=850) {
@@ -182,13 +222,13 @@
         }
     }
     function reset() {
-        if('speechSynthesis' in window)try{speechSynthesis.cancel()}catch(_){}
+        stopSpeech()
         balls=[];pending=[];particles=[];score=0;gauge=0;nextLevel=randomLevel();
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;strikeEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
         updateNext();updateHud();hint('指で位置を決め、離すと玉を落とします');
-        audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！');
+        audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
         if(mode!=='playing'||currentTime-lastDrop<460)return;
@@ -199,13 +239,13 @@
     function startStrike() {
         if(mode!=='playing'||gauge<50||!balls.length)return;
         gauge-=50;mode='strike';dangerSince=null;strikeEnds=currentTime+6000;
-        audio.start();audio.fx('rush');speak('打撃ラッシュ！');
+        audio.start();audio.fx('rush');speak('打撃ラッシュ！',true);
         notify('打撃ラッシュ！！',1200);hint('6秒間、玉を連打して破壊！ 大きい玉ほど硬い');updateHud();
     }
     function startThrow() {
         if(mode!=='playing'||gauge<100||!balls.length)return;
         mode='throw';dangerSince=null;
-        audio.start();audio.fx('rush');speak('投げ！');
+        audio.start();audio.fx('rush');speak('投げ！',true);
         notify('投げラッシュ！！',1200);hint('玉を1個掴んでドラッグ、離すと投げ成功！');updateHud();
     }
     function pick(x,y) {
@@ -224,7 +264,7 @@
     }
     function end() {
         if(mode==='ended')return;
-        mode='ended';updateHud();audio.fx('end');speak('そこまで！');notify('そこまで！！',1350);
+        mode='ended';updateHud();audio.fx('end');speak('そこまで！',true);notify('そこまで！！',1350);
         const rank=score>=25000?'塾長級':score>=14000?'五段':score>=8000?'三段':
             score>=5000?'初段':score>=2500?'一級':score>=1000?'五級':'十級';
         ui.panel.innerHTML='<div class="panel-kicker">一本勝負・結果発表</div>'+
@@ -373,7 +413,7 @@
                 if(mate)pending.push([b,mate]);
             }
             if(!canceled){gauge=0;mode='playing';dangerSince=null;audio.fx('hit');
-                speak('ドリャアッ！');notify('一本！！');hint('指で位置を決め、離すと玉を落とします');updateHud()}
+                speak('ドリャアッ！',true);notify('一本！！');hint('指で位置を決め、離すと玉を落とします');updateHud()}
         }else if(mode==='playing'&&!canceled)drop();
     }
     canvas.addEventListener('pointerup',e=>{e.preventDefault();release(e)});
@@ -383,13 +423,14 @@
     ui.strike.addEventListener('click',startStrike);
     ui.throw.addEventListener('click',startThrow);
     ui.sound.addEventListener('click',()=>{
-        muted=!muted;if(muted&&'speechSynthesis' in window)speechSynthesis.cancel();
+        muted=!muted;if(muted)stopSpeech();
         if(!muted)audio.start();
         ui.sound.textContent=muted?'♫ OFF':'♫ ON';ui.sound.classList.toggle('off',muted);
     });
     ui.voice.addEventListener('click',()=>{
-        voiceEnabled=!voiceEnabled;if(!voiceEnabled&&'speechSynthesis' in window)speechSynthesis.cancel();
+        voiceEnabled=!voiceEnabled;if(!voiceEnabled)stopSpeech();
         ui.voice.textContent=voiceEnabled?'声 ON':'声 OFF';ui.voice.classList.toggle('off',!voiceEnabled);
+        if(voiceEnabled)speak('セイッ！',true);
     });
     document.addEventListener('visibilitychange',()=>{lastFrame=performance.now();accumulator=0});
     function frame(ts){
