@@ -158,7 +158,7 @@
         Events.on(engine,'collisionStart',ev=>{
             for(const p of ev.pairs) {
                 const a=p.bodyA,b=p.bodyB;
-                if(a.game?.alive&&b.game?.alive&&a.game.level===b.game.level&&mode!=='ended')
+                if(a.game?.alive&&b.game?.alive&&a.game.level===b.game.level&&mode!=='ended'&&a!==dragged&&b!==dragged)
                     pending.push([a,b]);
             }
         });
@@ -367,6 +367,11 @@
         pointer=null;
         if(mode==='throw'&&dragged){
             const b=dragged;dragged=null;Body.setStatic(b,false);Body.setVelocity(b,{x:0,y:0});
+            if(!canceled){
+                const mate=balls.find(o=>o!==b&&o.game.alive&&o.game.level===b.game.level&&
+                    Math.hypot(o.position.x-b.position.x,o.position.y-b.position.y)<=o.circleRadius+b.circleRadius+3);
+                if(mate)pending.push([b,mate]);
+            }
             if(!canceled){gauge=0;mode='playing';dangerSince=null;audio.fx('hit');
                 speak('ドリャアッ！');notify('一本！！');hint('指で位置を決め、離すと玉を落とします');updateHud()}
         }else if(mode==='playing'&&!canceled)drop();
