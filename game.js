@@ -1,4 +1,4 @@
-/* 大道場 - 一人用の非公式落ち物ゲーム。外部の有料サービス・APIキーは不要。 */
+/* 大道塾 - 一人用の非公式落ち物ゲーム。外部の有料サービス・APIキーは不要。 */
 (() => {
     'use strict';
     const $ = id => document.getElementById(id);
@@ -239,10 +239,10 @@
         setTimeout(()=>{if(mode==='ended')ui.overlay.classList.remove('hidden')},1250);
     }
     async function share(rank) {
-        const msg='大道場で '+score.toLocaleString('ja-JP')+'点！ '+rank+'認定！ セイッ！ ヤーッ！';
+        const msg='大道塾で '+score.toLocaleString('ja-JP')+'点！ '+rank+'認定！ セイッ！ ヤーッ！';
         const u=location.href.split('#')[0];
         try{
-            if(navigator.share){await navigator.share({title:'大道場',text:msg,url:u});return}
+            if(navigator.share){await navigator.share({title:'大道塾',text:msg,url:u});return}
             if(navigator.clipboard?.writeText){
                 await navigator.clipboard.writeText(msg+'\n'+u);$('shareBtn').textContent='コピーしました！';return
             }
