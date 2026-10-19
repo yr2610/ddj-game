@@ -319,7 +319,7 @@
         ctx.strokeStyle='#d0b992';ctx.lineWidth=1;
         for(let x=45;x<W;x+=45){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,FLOOR);ctx.stroke()}
         ctx.save();ctx.globalAlpha=.075;ctx.fillStyle='#784c32';ctx.font='900 84px serif';ctx.textAlign='center';
-        ctx.fillText('大',180,205);ctx.fillText('道',180,306);ctx.fillText('場',180,407);ctx.restore();
+        ctx.fillText('大',180,205);ctx.fillText('道',180,306);ctx.fillText('塾',180,407);ctx.restore();
         ctx.fillStyle='#c65b4410';ctx.fillRect(0,0,W,DANGER);
         ctx.setLineDash([9,7]);ctx.lineWidth=2.3;ctx.strokeStyle='#bc6957';
         ctx.beginPath();ctx.moveTo(0,DANGER);ctx.lineTo(W,DANGER);ctx.stroke();ctx.setLineDash([]);
