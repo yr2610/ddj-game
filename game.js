@@ -494,14 +494,48 @@
         if(shake>0)shake*=.72;
     }
     function round(x,y,w,h,r) {ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+    // 背景の「大道塾」は筆文字を一度だけ描き、細いかすれを抜いたスタンプにする。
+    // 毎フレームCanvasに筆文字や乱数を描かず、描画負荷を一定に抑える。
+    let brushStamp=null;
+    function buildBrushStamp() {
+        const image=document.createElement('canvas');
+        image.width=256;image.height=352;
+        const ink=image.getContext('2d');
+        ink.save();ink.translate(128,176);ink.rotate(-.065);
+        ink.fillStyle='#784c32';
+        ink.font='100px "Yuji Boku","Yu Mincho","Hiragino Mincho ProN",serif';
+        ink.textAlign='center';ink.textBaseline='middle';
+        ink.fillText('大',0,-103);ink.fillText('道',0,0);ink.fillText('塾',0,103);
+        ink.restore();
+        // 不規則な細い透明線で墨のかすれを演出。固定シードでちらつきを防ぐ。
+        ink.globalCompositeOperation='destination-out';
+        let seed=17419;
+        const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
+        for(let i=0;i<95;i++){
+            const x=39+rand()*178,y=16+rand()*321;
+            ink.globalAlpha=.15+rand()*.53;
+            ink.strokeStyle='#000';
+            ink.lineWidth=.45+rand()*1.5;
+            ink.beginPath();ink.moveTo(x,y);
+            ink.lineTo(x+3+rand()*12,y-(1+rand()*5));
+            ink.stroke();
+        }
+        return image;
+    }
+    if(document.fonts&&document.fonts.ready) {
+        // Webフォント読み込み前の代替字体をキャッシュし続けない。
+        document.fonts.ready.then(()=>{brushStamp=null});
+    }
     function bg() {
         const g=ctx.createLinearGradient(0,0,W,H);
         g.addColorStop(0,'#f5e7cb');g.addColorStop(1,'#e5d0a9');
         ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
         ctx.strokeStyle='#d0b992';ctx.lineWidth=1;
         for(let x=45;x<W;x+=45){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,FLOOR);ctx.stroke()}
-        ctx.save();ctx.globalAlpha=.075;ctx.fillStyle='#784c32';ctx.font='900 84px serif';ctx.textAlign='center';
-        ctx.fillText('大',180,205);ctx.fillText('道',180,306);ctx.fillText('塾',180,407);ctx.restore();
+        if(!brushStamp)brushStamp=buildBrushStamp();
+        ctx.save();ctx.globalAlpha=.105;
+        ctx.drawImage(brushStamp,52,129);
+        ctx.restore();
         ctx.fillStyle='#c65b4410';ctx.fillRect(0,0,W,DANGER);
         ctx.setLineDash([9,7]);ctx.lineWidth=2.3;ctx.strokeStyle='#bc6957';
         ctx.beginPath();ctx.moveTo(0,DANGER);ctx.lineTo(W,DANGER);ctx.stroke();ctx.setLineDash([]);
@@ -526,38 +560,57 @@
     }
     // 「デュクシ！」に合わせた、短い白黄の8方向星型スパークと赤橙の衝撃線。
     // 全てCanvas描画なので追加の画像素材や通信は不要。
+    // 90年代2D格闘の白い打撃スパーク。星形花火ではなく、白い芯と
+    // 長さが不揃いの鋭い突起・淡い残像を瞬間的に表示する。
     function drawImpact(p) {
         const t=1-p.life/p.maxLife;
         const major=p.kind==='break'||p.level>=4;
-        const size=(p.kind==='hit'?21:major?44:31)*(0.85+t*.7);
-        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle+t*.32);
-        ctx.globalAlpha=Math.min(1,p.life/5);
+        const size=(p.kind==='hit'?22:major?40:30)*(.91+t*.31);
+        const alpha=clamp(p.life/6,0,1)*(t<.12?.65+t/.12*.35:1);
+        const lengths=[1.25,.61,.98,.67,1.16,.55,.94,.7];
+        ctx.save();ctx.translate(p.x,p.y);
+        ctx.rotate(p.angle*.22+t*.11);
+        ctx.scale(1,.87);
         ctx.globalCompositeOperation='lighter';
-        // 放射する細長い破片。周りの円からはみ出すことで打撃感を強調する。
-        for(let i=0;i<8;i++) {
-            const a=i*Math.PI/4;
-            const start=size*(.43+t*.22),end=size*(1.22+t*.25);
+        // 芯の周囲だけ薄いにじみを追加。遠くに伸びるスパイクはシャープに。
+        ctx.globalAlpha=alpha*.55;
+        const glow=ctx.createRadialGradient(0,0,size*.08,0,0,size*.69);
+        glow.addColorStop(0,'rgba(255,255,255,.9)');
+        glow.addColorStop(.42,'rgba(240,244,249,.52)');
+        glow.addColorStop(1,'rgba(220,228,237,0)');
+        ctx.fillStyle=glow;
+        ctx.beginPath();ctx.arc(0,0,size*.69,0,Math.PI*2);ctx.fill();
+        // 鈍いグレーの外側と明るい白の内側を少しずらして重ねる。
+        for(let layer=0;layer<2;layer++){
+            ctx.globalAlpha=alpha*(layer?1:.48);
+            ctx.fillStyle=layer?'#fff':'#aeb8c3';
             ctx.beginPath();
-            ctx.moveTo(Math.cos(a-.075)*start,Math.sin(a-.075)*start);
-            ctx.lineTo(Math.cos(a)*end,Math.sin(a)*end);
-            ctx.lineTo(Math.cos(a+.075)*start,Math.sin(a+.075)*start);
-            ctx.closePath();ctx.fillStyle=i%2===0?'#fffce5':'#ffae38';ctx.fill();
-        }
-        for(const layer of [0,1]) {
-            const inner=size*(layer?.09:.22),outer=size*(layer?.6:.93);
-            ctx.beginPath();
-            for(let i=0;i<16;i++) {
-                const a=i*Math.PI/8,r=i%2?inner:outer;
-                const x=Math.cos(a)*r,y=Math.sin(a)*r;
-                if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+            for(let i=0;i<8;i++){
+                const angle=i*Math.PI/4;
+                const inner=size*(layer?.11:.16);
+                const tip=size*lengths[i]*(layer?.95:1.13);
+                const halfWidth=layer?.19:.24;
+                ctx.moveTo(Math.cos(angle-halfWidth)*inner,Math.sin(angle-halfWidth)*inner);
+                ctx.lineTo(Math.cos(angle)*tip,Math.sin(angle)*tip);
+                ctx.lineTo(Math.cos(angle+halfWidth)*inner,Math.sin(angle+halfWidth)*inner);
+                ctx.closePath();
             }
-            ctx.closePath();ctx.fillStyle=layer?'#fffef2':major?'#ff7930':'#ffd458';ctx.fill();
+            ctx.fill();
         }
+        // 添付画像に近い、中心を横切る不規則な鋭い白の塊。
+        ctx.globalAlpha=alpha;
+        ctx.fillStyle='#fff';
+        ctx.beginPath();
+        const spikes=12;
+        for(let i=0;i<spikes*2;i++){
+            const a=i*Math.PI/spikes;
+            const v=i%2?(.2+(i%3)*.025):(.46+(i%5)*.048);
+            const r=size*v;
+            const x=Math.cos(a)*r,y=Math.sin(a)*r;
+            if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+        }
+        ctx.closePath();ctx.fill();
         ctx.globalCompositeOperation='source-over';
-        ctx.lineWidth=major?3:2;
-        ctx.strokeStyle=major?'#b62f21':'#fff2c0';
-        ctx.globalAlpha=(1-t)*.8;
-        ctx.beginPath();ctx.arc(0,0,size*(.48+t*.75),0,Math.PI*2);ctx.stroke();
         ctx.restore();
     }
     function render() {
