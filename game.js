@@ -40,6 +40,7 @@
     let engine, balls=[], pending=[], particles=[], impacts=[];
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
+    let activePlacement=null, dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
@@ -221,12 +222,36 @@
         if(score>best) {best=score;try{localStorage.setItem('ddj-best-v1',String(best))}catch(_){}}
         ui.score.textContent=score.toLocaleString('ja-JP');ui.best.textContent=best.toLocaleString('ja-JP');
     }
-    function risk() {
-        if(!balls.length)return 1;
-        const y=Math.min(...balls.map(b=>b.position.y-b.circleRadius));
-        return y<180?2:y<290?1.5:1;
+    // ゲージは「落とした玉の着地点が確定したとき」に一度だけ加算する。
+    // フロアに着地しただけではほぼゼロ。積み上がりが高いほど急増し、
+    // サイズの大きい玉ほど同じ高さでも増えやすくする。
+    function placementGauge(b) {
+        const supportHeight=clamp((FLOOR-(b.position.y+b.circleRadius))/(FLOOR-DANGER),0,1);
+        const sizeFactor=3+b.game.level*1.1;
+        return supportHeight*supportHeight*sizeFactor*1.4;
     }
-    function addGauge(n) {gauge=clamp(gauge+n*risk(),0,100);updateHud()}
+    function addGauge(n) {gauge=clamp(gauge+n,0,100);updateHud()}
+    function updatePlacement(dt) {
+        if(mode!=='playing'||!activePlacement)return;
+        const p=activePlacement,b=p.ball;
+        if(!b||!b.game.alive) {
+            // 最上位玉が消えた場合などは報酬なしで次の投下を許可。
+            activePlacement=null;dropReady=true;hint('指で位置を決め、離すと玉を落とします');
+            return;
+        }
+        const speed=Math.hypot(b.velocity.x,b.velocity.y);
+        const spin=Math.abs(b.angularVelocity||0);
+        // 低速状態が連続して一定時間続けば「設置完了」。
+        p.stillMs=(speed<.85&&spin<.055)?p.stillMs+dt:0;
+        const elapsed=currentTime-p.since;
+        // 遅い転がりや積み上がりの揺れで無限に待たせない安全上限。
+        if((elapsed>=480&&p.stillMs>=180)||elapsed>=3200) {
+            const earned=placementGauge(b);
+            if(earned>0)addGauge(earned);
+            activePlacement=null;dropReady=true;
+            hint('指で位置を決め、離すと玉を落とします');
+        }
+    }
     function updateHud() {
         ui.rushPct.textContent=Math.floor(gauge)+'%';
         ui.rushFill.style.width=gauge+'%';
@@ -294,9 +319,12 @@
             used.add(a.id);used.add(b.id);
             const lv=a.game.level,x=(a.position.x+b.position.x)/2,y=(a.position.y+b.position.y)/2;
             const velocity={x:(a.velocity.x+b.velocity.x)/2,y:(a.velocity.y+b.velocity.y)/2-1};
+            const tracked=activePlacement&&(activePlacement.ball===a||activePlacement.ball===b);
             removeBall(a);removeBall(b);
-            if(lv<TIERS.length-1)spawnBall(lv+1,x,y,velocity);
-            points(TIERS[lv].points);addGauge(2+lv*.4);
+            const successor=lv<TIERS.length-1?spawnBall(lv+1,x,y,velocity):null;
+            // 落下した玉が合体しても、後継の玉が静止するまで追いかける。
+            if(tracked){activePlacement.ball=successor;activePlacement.stillMs=0}
+            points(TIERS[lv].points);
             sparkle(x,y,TIERS[lv].fill,14+lv*2);impactSpark(x,y,lv,'merge');audio.fx('merge',lv);
             if(lv>=2)shake=Math.max(shake,lv>=5?7:lv>=3?4:1.6);
             if(lv>=3) {
@@ -308,6 +336,7 @@
     function reset() {
         stopSpeech()
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
+        activePlacement=null;dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
@@ -315,10 +344,13 @@
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
-        if(mode!=='playing'||currentTime-lastDrop<460)return;
+        if(mode!=='playing'||!dropReady||currentTime-lastDrop<460)return;
         const droppedLevel=nextLevel;
-        spawnBall(droppedLevel,pointerX,SPAWN);lastDrop=currentTime;
-        nextLevel=randomLevel();updateNext();addGauge(.8+droppedLevel*.3);
+        const b=spawnBall(droppedLevel,pointerX,SPAWN);
+        lastDrop=currentTime;dropReady=false;
+        activePlacement={ball:b,since:currentTime,stillMs:0};
+        nextLevel=randomLevel();updateNext();
+        hint('玉が落ち着くまで待機…');
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
     }
     function startStrike() {
@@ -413,7 +445,10 @@
             // 打撃中は時計だけ進めて物理演算・合体判定を完全停止する。
             currentTime+=dt;
             if(mode!=='strike')Engine.update(engine,dt);
-            if(mode==='playing')merges();
+            if(mode==='playing') {
+                merges();
+                updatePlacement(dt);
+            }
             balls.forEach(b=>{if(b.game.flash>0)b.game.flash--});
             if(mode==='strike'&&currentTime>=strikeEnds) {
                 mode='playing';notify('ラッシュ終了！');hint('指で位置を決め、離すと玉を落とします');updateHud();
@@ -453,7 +488,7 @@
         ctx.strokeStyle='#344755';ctx.lineWidth=r>35?3:2;ctx.stroke();
         ctx.beginPath();ctx.arc(-r*.2,-r*.26,r*.48,Math.PI*1.1,Math.PI*1.62);
         ctx.strokeStyle='#ffffff72';ctx.lineWidth=Math.max(2,r*.08);ctx.stroke();
-        ctx.fillStyle='#1d2b35';ctx.font='900 '+Math.min(r*1.08,lv>=7?24:36)+'px system-ui,sans-serif';
+        ctx.fillStyle='#1d2b35';ctx.font=Math.min(r*1.20,lv>=7?38:40)+'px "Yuji Boku","Yu Mincho",serif';
         ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(d.name,0,1,r*1.75);
         if(hits){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText(hits+'/'+(2**lv),0,r*.73)}
         ctx.restore();
