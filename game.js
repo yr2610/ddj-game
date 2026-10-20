@@ -91,13 +91,13 @@
             this.loadVoices();
             this.next=Math.max(this.next,this.ctx.currentTime+.02);
         },
-        tone(freq,dur=.13,type='triangle',vol=.06,at,slide) {
+        tone(freq,dur=.13,type='triangle',vol=.06,at,slide,attack=.009) {
             if(muted||!this.ctx)return;
             const a=this.ctx,t=at??a.currentTime,o=a.createOscillator(),g=a.createGain();
             o.type=type;o.frequency.setValueAtTime(Math.max(30,freq),t);
             if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,slide),t+dur);
             g.gain.setValueAtTime(.0001,t);
-            g.gain.exponentialRampToValueAtTime(Math.max(.0002,vol),t+.009);
+            g.gain.exponentialRampToValueAtTime(Math.max(.0002,vol),t+attack);
             g.gain.exponentialRampToValueAtTime(.0001,t+dur);
             o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+dur+.02);
         },
@@ -124,14 +124,19 @@
             if(!this.ctx||muted)return;
             const t=this.ctx.currentTime;
             const heavy=clamp(level/8,0,1);
-            const strength=kind==='hit'?.68:kind==='break'?1.15:1;
-            this.burst(t,.045+heavy*.015,2100+heavy*450,.19*strength,'bandpass');
-            this.burst(t+.008,.075+heavy*.035,460-heavy*140,.15*strength,'lowpass');
-            this.tone(155-heavy*48,.105+heavy*.042,'triangle',.12*strength,t,58-heavy*15);
-            this.tone(920+heavy*180,.027,'square',.035*strength,t,260);
-            if(level>=4||kind==='break') {
-                this.burst(t+.026,.11,720,.084*strength,'bandpass');
-                this.tone(96,.12,'sawtooth',.028*strength,t+.013,48);
+            const strength=kind==='hit'?.72:kind==='break'?1.12:1;
+            // 一瞬の「ピシッ」と、中域の「バシッ」、遅れて胴鳴り。
+            // 低域だけでなくスマホの小型スピーカーで聞こえる中域を厚くする。
+            this.burst(t,.024,3250,.36*strength,'highpass');
+            this.burst(t+.003,.075,1350,.34*strength,'bandpass');
+            this.burst(t+.012,.095+heavy*.033,680-heavy*180,.35*strength,'lowpass');
+            this.tone(310-heavy*70,.043,'square',.055*strength,t,130-heavy*20,.001);
+            this.tone(175-heavy*48,.10+heavy*.045,'sawtooth',.13*strength,t+.003,62-heavy*12,.002);
+            this.tone(112-heavy*26,.14+heavy*.055,'triangle',.16*strength,t+.006,47,.002);
+            if(level>=3||kind==='break') {
+                // 大物の合体はわずかな二段打ちで重みを付ける。
+                this.burst(t+.022,.068,920-heavy*130,.16*strength,'bandpass');
+                this.tone(86-heavy*11,.13,'sawtooth',.057*strength,t+.02,43,.002);
             }
         },
         fx(name,level=0) {
