@@ -10,4 +10,7 @@
 .alert{font-size:clamp(26px,7.4vw,42px);text-shadow:2px 3px 0 #682b20,-2px -1px 0 #682b20,0 0 16px #000;letter-spacing:.02em}
 .overlay-panel h1{font-size:clamp(49px,13vw,66px)}
 .result b{font-size:43px}
+/* 次の玉にも盤面の漢字と同じ筆書体を採用 */
+.next-ball{font-family:var(--brush-font);font-weight:400}
+
 @media(max-height:700px){.brand{font-size:19px}}
