@@ -347,7 +347,7 @@
             if(lv===1) {
                 // 蹴＋蹴で「効果」完成。
                 notify('効果！',650);
-                if(currentTime-lastMergeVoice>900){speak('効果！');lastMergeVoice=currentTime}
+                if(currentTime-lastMergeVoice>900){speak('効果！',true);lastMergeVoice=currentTime}
             }else if(lv>=3) {
                 notify(lv===TIERS.length-1?'完全制覇！！':lv>=5?'一本！！':'技あり！',900);
                 if(currentTime-lastMergeVoice>900){speak(lv>=5?'一本！':'技あり！');lastMergeVoice=currentTime}
