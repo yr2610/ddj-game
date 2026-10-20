@@ -16,23 +16,26 @@
     }
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
     const W = 360, H = 480, FLOOR = 470, LEFT = 11, RIGHT = 349, DANGER = 103, SPAWN = 48;
+    // 容器幅338pxに対して最終段の直径268px。原作系の大きさの差を目安に調整。
+    // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
-        {name:'打',r:17,fill:'#8ad5d3',edge:'#398f9c',points:10},
-        {name:'投',r:23,fill:'#b7d88c',edge:'#6b9854',points:25},
-        {name:'極',r:29,fill:'#c9a9db',edge:'#88689e',points:60},
-        {name:'効果',r:35,fill:'#e0c879',edge:'#aa8f4b',points:110},
-        {name:'技あり',r:41,fill:'#f5b27c',edge:'#bb7454',points:200},
-        {name:'一本',r:47,fill:'#e89a8e',edge:'#b85e61',points:340},
-        {name:'空道',r:53,fill:'#96b7e5',edge:'#567eac',points:570},
-        {name:'大道塾',r:62,fill:'#c6a7df',edge:'#8d65a6',points:930},
-        {name:'塾長',r:70,fill:'#eac775',edge:'#a57d32',points:1600}
+        {name:'突',r:16,fill:'#8ad5d3',edge:'#398f9c',points:10},
+        {name:'蹴',r:22,fill:'#b7d88c',edge:'#6b9854',points:25},
+        {name:'効果',r:30,fill:'#e0c879',edge:'#aa8f4b',points:60},
+        {name:'投',r:40,fill:'#c9a9db',edge:'#88689e',points:110},
+        {name:'技あり',r:51,fill:'#f5b27c',edge:'#bb7454',points:200},
+        {name:'極',r:64,fill:'#e89a8e',edge:'#b85e61',points:340},
+        {name:'一本',r:79,fill:'#96b7e5',edge:'#567eac',points:570},
+        {name:'塾長',r:97,fill:'#c6a7df',edge:'#8d65a6',points:930},
+        {name:'空道',r:116,fill:'#eac775',edge:'#a57d32',points:1600},
+        {name:'大道塾',r:134,fill:'#e89b75',edge:'#aa5749',points:2600}
     ];
     const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
     const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
     let engine, balls=[], pending=[], particles=[];
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
-    let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0;
+    let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
@@ -148,7 +151,7 @@
         const y=Math.min(...balls.map(b=>b.position.y-b.circleRadius));
         return y<180?2:y<290?1.5:1;
     }
-    function addGauge(n) {gauge=clamp(gauge+Math.ceil(n*risk()),0,100);updateHud()}
+    function addGauge(n) {gauge=clamp(gauge+n*risk(),0,100);updateHud()}
     function updateHud() {
         ui.rushPct.textContent=Math.floor(gauge)+'%';
         ui.rushFill.style.width=gauge+'%';
@@ -166,7 +169,7 @@
     }
     function spawnBall(level,x,y,velocity) {
         const d=TIERS[level],b=Bodies.circle(clamp(x,LEFT+d.r,RIGHT-d.r),y,d.r,{
-            restitution:.08,friction:.46,frictionStatic:.74,frictionAir:.002,density:.0012,slop:.015
+            restitution:.055,friction:.88,frictionStatic:1.35,frictionAir:.008,density:.0012,slop:.015
         });
         b.game={level,alive:true,born:currentTime,hits:0,flash:0};
         if(velocity)Body.setVelocity(b,velocity);
@@ -189,7 +192,7 @@
     function makeWorld() {
         engine=Engine.create({enableSleeping:false});engine.gravity.y=1.3;
         engine.positionIterations=8;engine.velocityIterations=8;
-        const wall={isStatic:true,friction:.6,restitution:.05};
+        const wall={isStatic:true,friction:.9,frictionStatic:1.3,restitution:.03};
         Composite.add(engine.world,[
             Bodies.rectangle(1,H/2,20,H+150,wall),
             Bodies.rectangle(W-1,H/2,20,H+150,wall),
@@ -198,7 +201,7 @@
         Events.on(engine,'collisionStart',ev=>{
             for(const p of ev.pairs) {
                 const a=p.bodyA,b=p.bodyB;
-                if(a.game?.alive&&b.game?.alive&&a.game.level===b.game.level&&mode!=='ended'&&a!==dragged&&b!==dragged)
+                if(a.game?.alive&&b.game?.alive&&a.game.level===b.game.level&&mode==='playing'&&a!==dragged&&b!==dragged)
                     pending.push([a,b]);
             }
         });
@@ -213,7 +216,7 @@
             const velocity={x:(a.velocity.x+b.velocity.x)/2,y:(a.velocity.y+b.velocity.y)/2-1};
             removeBall(a);removeBall(b);
             if(lv<TIERS.length-1)spawnBall(lv+1,x,y,velocity);
-            points(TIERS[lv].points);addGauge(10+lv*2);
+            points(TIERS[lv].points);addGauge(2+lv*.4);
             sparkle(x,y,TIERS[lv].fill,14+lv*2);audio.fx('merge',lv);
             if(lv>=3) {
                 shake=5;notify(lv===TIERS.length-1?'完全制覇！！':lv>=5?'一本！！':'技あり！',900);
@@ -225,15 +228,16 @@
         stopSpeech()
         balls=[];pending=[];particles=[];score=0;gauge=0;nextLevel=randomLevel();
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
-        currentTime=0;lastDrop=-5000;strikeEnds=0;lastMergeVoice=-10000;
+        currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
         updateNext();updateHud();hint('指で位置を決め、離すと玉を落とします');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
         if(mode!=='playing'||currentTime-lastDrop<460)return;
-        spawnBall(nextLevel,pointerX,SPAWN);lastDrop=currentTime;
-        nextLevel=randomLevel();updateNext();addGauge(4);
+        const droppedLevel=nextLevel;
+        spawnBall(droppedLevel,pointerX,SPAWN);lastDrop=currentTime;
+        nextLevel=randomLevel();updateNext();addGauge(.8+droppedLevel*.3);
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
     }
     function startStrike() {
@@ -256,7 +260,7 @@
     function hit(x,y) {
         const b=pick(x,y);if(!b)return;
         b.game.hits++;b.game.flash=14;sparkle(x,y,'#ffe2a8',8);shake=3;audio.fx('hit');
-        if(b.game.hits>=1+Math.floor(b.game.level/2)) {
+        if(b.game.hits>=2**b.game.level) {
             sparkle(b.position.x,b.position.y,'#d95a4b',16);
             removeBall(b);audio.fx('break');points((b.game.level+1)*3);
         }
@@ -300,11 +304,15 @@
     }
     function step(dt) {
         if(engine&&['playing','strike','throw'].includes(mode)){
-            Engine.update(engine,dt);currentTime+=dt;merges();
+            // 打撃中は時計だけ進めて物理演算・合体判定を完全停止する。
+            currentTime+=dt;
+            if(mode!=='strike')Engine.update(engine,dt);
+            if(mode==='playing')merges();
             balls.forEach(b=>{if(b.game.flash>0)b.game.flash--});
             if(mode==='strike'&&currentTime>=strikeEnds) {
                 mode='playing';notify('ラッシュ終了！');hint('指で位置を決め、離すと玉を落とします');updateHud();
             }
+            if(mode==='throw'&&currentTime>=throwEnds)finishThrow();
             checkDanger();
         }
         particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.07;p.life--});
@@ -327,8 +335,8 @@
         ctx.fillStyle='#fff1dd';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.fillText('危険ライン',48,DANGER+22);
         ctx.fillStyle='#785738';ctx.fillRect(0,FLOOR,W,H-FLOOR);
     }
-    function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0) {
-        const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);
+    function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0) {
+        const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
         ctx.shadowColor='#2b27233d';ctx.shadowBlur=7;ctx.shadowOffsetY=4;
         ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
         const g=ctx.createRadialGradient(-r*.32,-r*.35,r*.1,0,0,r);
@@ -339,13 +347,13 @@
         ctx.strokeStyle='#ffffff72';ctx.lineWidth=Math.max(2,r*.08);ctx.stroke();
         ctx.fillStyle='#1d2b35';ctx.font='900 '+Math.min(r*1.08,lv>=7?24:36)+'px system-ui,sans-serif';
         ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(d.name,0,1,r*1.75);
-        if(hits){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText('×'+hits,0,r*.73)}
+        if(hits){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText(hits+'/'+(2**lv),0,r*.73)}
         ctx.restore();
     }
     function render() {
         ctx.save();if(shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
         bg();
-        balls.forEach(b=>ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,b.game.hits));
+        balls.forEach(b=>ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,b.game.hits,b.angle));
         for(const p of particles){ctx.globalAlpha=clamp(p.life/42,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size)}
         ctx.globalAlpha=1;
         if(mode==='playing'){
