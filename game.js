@@ -217,10 +217,15 @@
         }
     }
     function hint(s){ui.hint.textContent=s}
+    function clearNotice() {
+        if(alertTimer){clearTimeout(alertTimer);alertTimer=null}
+        ui.alert.classList.remove('active');
+        ui.alert.textContent='';
+    }
     function notify(s,ms=850) {
+        if(alertTimer){clearTimeout(alertTimer);alertTimer=null}
         ui.alert.textContent=s;ui.alert.classList.add('active');
-        if(alertTimer)clearTimeout(alertTimer);
-        alertTimer=setTimeout(()=>ui.alert.classList.remove('active'),ms);
+        alertTimer=setTimeout(()=>{ui.alert.classList.remove('active');alertTimer=null},ms);
     }
     function points(n) {
         score+=n;
@@ -430,8 +435,8 @@
         mode='ended';updateHud();audio.fx('end');speak('そこまで！',true);notify('そこまで！！',1350);
         const rank=score>=25000?'塾長級':score>=14000?'五段':score>=8000?'三段':
             score>=5000?'初段':score>=2500?'一級':score>=1000?'五級':'十級';
-        ui.panel.innerHTML='<div class="panel-kicker">一本勝負・結果発表</div>'+
-            '<h1 style="font-size:39px">そこまで！！</h1>'+
+        ui.panel.innerHTML='<div class="panel-kicker">一本勝負</div>'+
+            '<h1 style="font-size:39px">結果発表</h1>'+
             '<div class="result">得点 <strong>'+score.toLocaleString('ja-JP')+
             '</strong><span class="result-small">ゲーム内段位認定</span><b>'+rank+'</b></div>'+
             '<button id="retryBtn" class="primary-btn">もう一本！ 始め！！</button>'+
@@ -439,7 +444,12 @@
             '<p class="panel-footnote">※ 段位はゲーム内のお遊び認定です。</p>';
         $('retryBtn').addEventListener('click',reset);
         $('shareBtn').addEventListener('click',()=>share(rank));
-        setTimeout(()=>{if(mode==='ended')ui.overlay.classList.remove('hidden')},1250);
+        setTimeout(()=>{
+            if(mode==='ended'){
+                clearNotice(); // 「そこまで！」は一瞬の演出のみ。リザルトに持ち越さない。
+                ui.overlay.classList.remove('hidden');
+            }
+        },1250);
     }
     async function share(rank) {
         const msg='大道塾で '+score.toLocaleString('ja-JP')+'点！ '+rank+'認定！ セイッ！ ヤーッ！';
