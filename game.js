@@ -582,6 +582,8 @@
         ctx.beginPath();ctx.arc(0,0,size*.69,0,Math.PI*2);ctx.fill();
         // 鈍いグレーの外側と明るい白の内側を少しずらして重ねる。
         for(let layer=0;layer<2;layer++){
+            // ベージュ背景でも白が埋もれないよう下層は通常合成の薄い灰色。
+            ctx.globalCompositeOperation=layer?'lighter':'source-over';
             ctx.globalAlpha=alpha*(layer?1:.48);
             ctx.fillStyle=layer?'#fff':'#aeb8c3';
             ctx.beginPath();
