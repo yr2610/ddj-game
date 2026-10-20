@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#101d29">
-  <meta name="description" content="打・投・極を合体！ 打撃と投げのラッシュで逆転を狙う、一人用のお気楽落ち物ゲーム。">
+  <meta name="description" content="突・蹴・効果を合体！ 打撃と投げのラッシュで逆転を狙う、一人用のお気楽落ち物ゲーム。">
   <meta property="og:title" content="大道塾 — 一本勝負！">
   <meta property="og:description" content="セイッ！ ヤーッ！ 漢字のボールを合体させるおバカ武道パズル。">
   <title>大道塾｜一本勝負！</title>
   <link rel="stylesheet" href="./styles.css">
   <script defer src="./vendor/matter.min.js"></script>
-  <script defer src="./game.js?v=20261019-2"></script>
+  <script defer src="./game.js?v=20261020-1"></script>
 </head>
 <body>
   <main class="app">
@@ -21,7 +21,7 @@
     <section class="scoreboard" aria-label="スコア">
       <div><span class="metric-label">得点</span><strong id="score" class="metric-value">0</strong></div>
       <div><span class="metric-label">最高得点</span><strong id="best" class="metric-value">0</strong></div>
-      <div><span class="metric-label">次</span><div id="nextBall" class="next-ball">打</div></div>
+      <div><span class="metric-label">次</span><div id="nextBall" class="next-ball">突</div></div>
     </section>
     <section class="arena-shell" aria-label="試合場">
       <canvas id="arena" width="360" height="480" role="img" aria-label="ゲーム画面。左右に動かして落とす。ラッシュ中はタップまたはドラッグして操作します。"></canvas>
@@ -31,7 +31,7 @@
           <div class="panel-kicker">非公式・武道風パズル</div>
           <h1>大道塾</h1>
           <p class="panel-slogan">落として、合わせて、セイッ！</p>
-          <div class="rule-card">同じ文字の玉を合わせて進化！<br>上の赤線を越えると試合終了。<br><strong>ゲージ50%で打撃、100%で投げ！</strong></div>
+          <div class="rule-card">同じ文字の玉を合わせて進化！<br>上の赤線を越えると試合終了。<br><strong>ゲージ50%で6秒打撃、100%で3秒投げ！</strong></div>
           <button id="primaryBtn" class="primary-btn" type="button">一本勝負！ 始め！！</button>
           <p class="panel-footnote">スマホ：指で位置を決めて離す ／ PC：マウスで操作</p>
         </div>
@@ -43,7 +43,7 @@
       <div class="rush-actions"><button id="strikeBtn" class="rush-btn strike" type="button" disabled>👊 打撃 <small>50%消費</small></button><button id="throwBtn" class="rush-btn throw" type="button" disabled>🥋 投げ <small>100%消費</small></button></div>
       <div id="hint" class="hint" aria-live="polite">タップした位置にボールを落とします</div>
     </section>
-    <footer>※ 本作は非公式のパロディ作品です。いかなる競技団体とも無関係です。<br>ボイスは端末内蔵の読み上げ機能を使用します。</footer>
+    <footer>※ 本作は非公式のパロディ作品です。いかなる競技団体とも無関係です。<br>PCでは端末の読み上げ音声、スマホではCC0の録音済み叫び声素材を使用します（音声の読み込みには通信が必要）。</footer>
   </main>
 </body>
 </html>
