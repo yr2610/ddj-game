@@ -246,11 +246,20 @@
         }
         const speed=Math.hypot(b.velocity.x,b.velocity.y);
         const spin=Math.abs(b.angularVelocity||0);
-        // 低速状態が連続して一定時間続けば「設置完了」。
+        // 通常の低速静止判定に加え、Y位置が一定なら横方向の転がりを許す。
+        // 毎フレームの差分では遅い落下も誤検出するため、
+        // 観測開始時の底面Yからの累積ずれで判定する。
+        const bottom=b.position.y+b.circleRadius;
+        if(p.heightAnchor===null||Math.abs(bottom-p.heightAnchor)>2.5){
+            p.heightAnchor=bottom;p.heightStableMs=0;
+        }else{
+            p.heightStableMs+=dt;
+        }
         p.stillMs=(speed<.85&&spin<.055)?p.stillMs+dt:0;
         const elapsed=currentTime-p.since;
-        // 遅い転がりや積み上がりの揺れで無限に待たせない安全上限。
-        if((elapsed>=480&&p.stillMs>=180)||elapsed>=3200) {
+        const resting=(p.stillMs>=180||p.heightStableMs>=220);
+        // 落下中の一瞬の頂点を静止扱いせず、転がり続けても3.2秒で解禁。
+        if((elapsed>=460&&resting)||elapsed>=3200) {
             const earned=placementGauge(b);
             if(earned>0)addGauge(earned);
             activePlacement=null;dropReady=true;
@@ -328,11 +337,18 @@
             removeBall(a);removeBall(b);
             const successor=lv<TIERS.length-1?spawnBall(lv+1,x,y,velocity):null;
             // 落下した玉が合体しても、後継の玉が静止するまで追いかける。
-            if(tracked){activePlacement.ball=successor;activePlacement.stillMs=0}
+            if(tracked){
+                activePlacement.ball=successor;activePlacement.stillMs=0;
+                activePlacement.heightAnchor=null;activePlacement.heightStableMs=0;
+            }
             points(TIERS[lv].points);
             sparkle(x,y,TIERS[lv].fill,14+lv*2);impactSpark(x,y,lv,'merge');audio.fx('merge',lv);
             if(lv>=2)shake=Math.max(shake,lv>=5?7:lv>=3?4:1.6);
-            if(lv>=3) {
+            if(lv===1) {
+                // 蹴＋蹴で「効果」完成。
+                notify('効果！',650);
+                if(currentTime-lastMergeVoice>900){speak('効果！');lastMergeVoice=currentTime}
+            }else if(lv>=3) {
                 notify(lv===TIERS.length-1?'完全制覇！！':lv>=5?'一本！！':'技あり！',900);
                 if(currentTime-lastMergeVoice>900){speak(lv>=5?'一本！':'技あり！');lastMergeVoice=currentTime}
             }
@@ -353,7 +369,7 @@
         const droppedLevel=nextLevel;
         const b=spawnBall(droppedLevel,pointerX,SPAWN);
         lastDrop=currentTime;dropReady=false;
-        activePlacement={ball:b,since:currentTime,stillMs:0};
+        activePlacement={ball:b,since:currentTime,stillMs:0,heightAnchor:null,heightStableMs:0};
         nextLevel=randomLevel();updateNext();
         hint('玉が落ち着くまで待機…');
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
