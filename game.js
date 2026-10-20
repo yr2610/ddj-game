@@ -31,6 +31,11 @@
         {name:'大道塾',r:134,fill:'#e89b75',edge:'#aa5749',points:2600}
     ];
     const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
+    // スマホのWeb Speech APIは無音になり得るため、CC0の実録ボイスを使う。
+    // HaelDB (CC0): https://opengameart.org/content/male-gruntyelling-sounds
+    const MOBILE_VOICE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const VOICE_BASE = 'https://raw.githubusercontent.com/transitive-bullshit/ai-safety-doom/de99fce98d664c218944ec030859251f26c6bccf/public/game/audio/';
+    const VOICE_FILES = ['player-pain-1.wav','player-pain-2.wav','player-death.wav'];
     const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
     let engine, balls=[], pending=[], particles=[];
@@ -43,11 +48,47 @@
 
     const audio = {
         ctx:null, next:0, index:0,
+        voiceBuffers:null,voiceLoadStarted:false,pendingVoice:null,voiceFailed:false,voiceIndex:0,
+        async loadVoices() {
+            if(this.voiceLoadStarted||!MOBILE_VOICE||!this.ctx)return;
+            this.voiceLoadStarted=true;
+            try {
+                const buffers=[];
+                for(const name of VOICE_FILES) {
+                    const response=await fetch(VOICE_BASE+name,{mode:'cors'});
+                    if(!response.ok)throw Error('HTTP '+response.status);
+                    buffers.push(await this.ctx.decodeAudioData(await response.arrayBuffer()));
+                }
+                this.voiceBuffers=buffers;
+                const waiting=this.pendingVoice;this.pendingVoice=null;
+                if(waiting&&performance.now()-waiting.at<2000)this.sampleVoice(waiting.text);
+            }catch (e) {
+                this.voiceFailed=true;this.pendingVoice=null;
+                console.warn('収録ボイスを取得できません:',e);
+                ui.voice.textContent='声 読込失敗';
+            }
+        },
+        sampleVoice(text) {
+            if(muted||!voiceEnabled||!this.ctx)return;
+            if(!this.voiceBuffers) {
+                if(!this.voiceFailed)this.pendingVoice={text,at:performance.now()};
+                return;
+            }
+            const long=/始め|そこまで|ドリャ|ラッシュ|一本/.test(text);
+            const index=long?2:(this.voiceIndex++%2);
+            const src=this.ctx.createBufferSource();
+            const gain=this.ctx.createGain();
+            src.buffer=this.voiceBuffers[index];
+            src.playbackRate.value=long?1:0.92+Math.random()*.2;
+            gain.gain.value=long?.35:.34;
+            src.connect(gain);gain.connect(this.ctx.destination);src.start();
+        },
         start() {
             const A=window.AudioContext||window.webkitAudioContext;
             if(!A)return;
             if(!this.ctx)this.ctx=new A();
             if(this.ctx.state==='suspended')this.ctx.resume().catch(()=>{});
+            this.loadVoices();
             this.next=Math.max(this.next,this.ctx.currentTime+.02);
         },
         tone(freq,dur=.13,type='triangle',vol=.06,at,slide) {
@@ -107,7 +148,9 @@
         }
     }
     function speak(s,urgent=false) {
-        if(muted||!voiceEnabled||!('speechSynthesis' in window)||!('SpeechSynthesisUtterance' in window))return;
+        if(muted||!voiceEnabled)return;
+        if(MOBILE_VOICE) {audio.sampleVoice(s);return}
+        if(!('speechSynthesis' in window)||!('SpeechSynthesisUtterance' in window))return;
         try {
             const a=window.speechSynthesis;
             const now=performance.now();
