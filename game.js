@@ -255,7 +255,7 @@
         }else{
             p.heightStableMs+=dt;
         }
-        p.stillMs=(speed<.85&&spin<.055)?p.stillMs+dt:0;
+        p.stillMs=(speed<.85&&Math.abs(b.velocity.y)<.25&&spin<.055)?p.stillMs+dt:0;
         const elapsed=currentTime-p.since;
         const resting=(p.stillMs>=180||p.heightStableMs>=220);
         // 落下中の一瞬の頂点を静止扱いせず、転がり続けても3.2秒で解禁。
