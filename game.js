@@ -16,7 +16,7 @@
     }
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
     const W = 360, H = 480, FLOOR = 470, LEFT = 11, RIGHT = 349, DANGER = 103, SPAWN = 48;
-    // 容器幅338pxに対して最終段の直径268px。原作系の大きさの差を目安に調整。
+    // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
         {name:'突',r:16,fill:'#8ad5d3',edge:'#398f9c',points:10},
@@ -26,9 +26,8 @@
         {name:'技あり',r:51,fill:'#f5b27c',edge:'#bb7454',points:200},
         {name:'極',r:64,fill:'#e89a8e',edge:'#b85e61',points:340},
         {name:'一本',r:79,fill:'#96b7e5',edge:'#567eac',points:570},
-        {name:'塾長',r:97,fill:'#c6a7df',edge:'#8d65a6',points:930},
-        {name:'空道',r:116,fill:'#eac775',edge:'#a57d32',points:1600},
-        {name:'大道塾',r:134,fill:'#e89b75',edge:'#aa5749',points:2600}
+        {name:'空道',r:97,fill:'#eac775',edge:'#a57d32',points:1600},
+        {name:'大道塾',r:116,fill:'#e89b75',edge:'#aa5749',points:2600}
     ];
     const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
     // スマホのWeb Speech APIは無音になり得るため、CC0の実録ボイスを使う。
