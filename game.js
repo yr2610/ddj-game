@@ -37,7 +37,7 @@
     const VOICE_FILES = ['player-pain-1.wav','player-pain-2.wav','player-death.wav'];
     const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
-    let engine, balls=[], pending=[], particles=[];
+    let engine, balls=[], pending=[], particles=[], impacts=[];
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
@@ -46,7 +46,7 @@
     ui.best.textContent=best.toLocaleString('ja-JP');
 
     const audio = {
-        ctx:null, next:0, index:0,
+        ctx:null, next:0, index:0,noiseBuffer:null,
         voiceBuffers:null,voiceLoadStarted:false,pendingVoice:null,voiceFailed:false,voiceIndex:0,
         async loadVoices() {
             if(this.voiceLoadStarted||!MOBILE_VOICE||!this.ctx)return;
@@ -100,13 +100,46 @@
             g.gain.exponentialRampToValueAtTime(.0001,t+dur);
             o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+dur+.02);
         },
+        // 90年代の2D格闘ゲーム風：短い帯域ノイズ（皮の破裂音）と
+        // 周波数が落ちる低音（打撃の胴鳴り）を重ねて作る。音声ファイル不要。
+        burst(t,dur,freq,vol,type='bandpass') {
+            if(!this.ctx||muted)return;
+            const a=this.ctx;
+            if(!this.noiseBuffer) {
+                const length=Math.ceil(a.sampleRate*.24);
+                this.noiseBuffer=a.createBuffer(1,length,a.sampleRate);
+                const samples=this.noiseBuffer.getChannelData(0);
+                for(let i=0;i<length;i++)samples[i]=(Math.random()*2-1)*(1-i/length*.25);
+            }
+            const source=a.createBufferSource(), filter=a.createBiquadFilter(), gain=a.createGain();
+            source.buffer=this.noiseBuffer;
+            filter.type=type;filter.frequency.value=freq;filter.Q.value=.8;
+            gain.gain.setValueAtTime(Math.max(vol,.0001),t);
+            gain.gain.exponentialRampToValueAtTime(.0001,t+dur);
+            source.connect(filter);filter.connect(gain);gain.connect(a.destination);
+            source.start(t);source.stop(t+dur);
+        },
+        impact(level=0,kind='merge') {
+            if(!this.ctx||muted)return;
+            const t=this.ctx.currentTime;
+            const heavy=clamp(level/8,0,1);
+            const strength=kind==='hit'?.68:kind==='break'?1.15:1;
+            this.burst(t,.045+heavy*.015,2100+heavy*450,.19*strength,'bandpass');
+            this.burst(t+.008,.075+heavy*.035,460-heavy*140,.15*strength,'lowpass');
+            this.tone(155-heavy*48,.105+heavy*.042,'triangle',.12*strength,t,58-heavy*15);
+            this.tone(920+heavy*180,.027,'square',.035*strength,t,260);
+            if(level>=4||kind==='break') {
+                this.burst(t+.026,.11,720,.084*strength,'bandpass');
+                this.tone(96,.12,'sawtooth',.028*strength,t+.013,48);
+            }
+        },
         fx(name,level=0) {
             if(!this.ctx||muted)return;
             const t=this.ctx.currentTime;
             if(name==='drop')this.tone(160,.09,'triangle',.08,t,105);
-            if(name==='merge'){this.tone(410+level*48,.19,'triangle',.12,t,650+level*60);this.tone(690,.13,'sine',.05,t+.04)}
-            if(name==='hit'){this.tone(110,.12,'sawtooth',.13,t,55);this.tone(670,.045,'square',.03,t)}
-            if(name==='break')this.tone(340,.25,'triangle',.11,t,55);
+            if(name==='merge')this.impact(level,'merge');
+            if(name==='hit')this.impact(level,'hit');
+            if(name==='break')this.impact(level,'break');
             if(name==='rush')[0,.1,.2].forEach((d,i)=>this.tone(300+i*120,.24,'sawtooth',.07,t+d));
             if(name==='end')[0,.17,.34].forEach((d,i)=>this.tone(320-i*60,.32,'triangle',.15,t+d));
         },
@@ -223,6 +256,11 @@
         const i=balls.indexOf(b);if(i>=0)balls.splice(i,1);
         Composite.remove(engine.world,b);
     }
+    function impactSpark(x,y,level,kind='merge') {
+        const maxLife=kind==='merge'?(level>=4?20:16):11;
+        impacts.push({x,y,level,kind,life:maxLife,maxLife,angle:Math.random()*Math.PI*2});
+        if(impacts.length>32)impacts.splice(0,impacts.length-32);
+    }
     function sparkle(x,y,color,n=10) {
         for(let i=0;i<n;i++){
             const a=Math.random()*Math.PI*2,v=1+Math.random()*3;
@@ -259,16 +297,17 @@
             removeBall(a);removeBall(b);
             if(lv<TIERS.length-1)spawnBall(lv+1,x,y,velocity);
             points(TIERS[lv].points);addGauge(2+lv*.4);
-            sparkle(x,y,TIERS[lv].fill,14+lv*2);audio.fx('merge',lv);
+            sparkle(x,y,TIERS[lv].fill,14+lv*2);impactSpark(x,y,lv,'merge');audio.fx('merge',lv);
+            if(lv>=2)shake=Math.max(shake,lv>=5?7:lv>=3?4:1.6);
             if(lv>=3) {
-                shake=5;notify(lv===TIERS.length-1?'完全制覇！！':lv>=5?'一本！！':'技あり！',900);
+                notify(lv===TIERS.length-1?'完全制覇！！':lv>=5?'一本！！':'技あり！',900);
                 if(currentTime-lastMergeVoice>900){speak(lv>=5?'一本！':'技あり！');lastMergeVoice=currentTime}
             }
         }
     }
     function reset() {
         stopSpeech()
-        balls=[];pending=[];particles=[];score=0;gauge=0;nextLevel=randomLevel();
+        balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
@@ -326,10 +365,10 @@
     }
     function hit(x,y) {
         const b=pick(x,y);if(!b)return;
-        b.game.hits++;b.game.flash=14;sparkle(x,y,'#ffe2a8',8);shake=3;audio.fx('hit');
+        b.game.hits++;b.game.flash=14;sparkle(x,y,'#ffe2a8',8);impactSpark(x,y,b.game.level,'hit');shake=3;audio.fx('hit',b.game.level);
         if(b.game.hits>=2**b.game.level) {
-            sparkle(b.position.x,b.position.y,'#d95a4b',16);
-            removeBall(b);audio.fx('break');points((b.game.level+1)*3);
+            sparkle(b.position.x,b.position.y,'#d95a4b',16);impactSpark(b.position.x,b.position.y,b.game.level,'break');
+            removeBall(b);audio.fx('break',b.game.level);points((b.game.level+1)*3);
         }
         updateHud();
     }
@@ -384,6 +423,8 @@
         }
         particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.07;p.life--});
         particles=particles.filter(p=>p.life>0);
+        impacts.forEach(p=>p.life--);
+        impacts=impacts.filter(p=>p.life>0);
         if(shake>0)shake*=.72;
     }
     function round(x,y,w,h,r) {ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
@@ -417,12 +458,49 @@
         if(hits){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText(hits+'/'+(2**lv),0,r*.73)}
         ctx.restore();
     }
+    // 「デュクシ！」に合わせた、短い白黄の8方向星型スパークと赤橙の衝撃線。
+    // 全てCanvas描画なので追加の画像素材や通信は不要。
+    function drawImpact(p) {
+        const t=1-p.life/p.maxLife;
+        const major=p.kind==='break'||p.level>=4;
+        const size=(p.kind==='hit'?21:major?44:31)*(0.85+t*.7);
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle+t*.32);
+        ctx.globalAlpha=Math.min(1,p.life/5);
+        ctx.globalCompositeOperation='lighter';
+        // 放射する細長い破片。周りの円からはみ出すことで打撃感を強調する。
+        for(let i=0;i<8;i++) {
+            const a=i*Math.PI/4;
+            const start=size*(.43+t*.22),end=size*(1.22+t*.25);
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a-.075)*start,Math.sin(a-.075)*start);
+            ctx.lineTo(Math.cos(a)*end,Math.sin(a)*end);
+            ctx.lineTo(Math.cos(a+.075)*start,Math.sin(a+.075)*start);
+            ctx.closePath();ctx.fillStyle=i%2===0?'#fffce5':'#ffae38';ctx.fill();
+        }
+        for(const layer of [0,1]) {
+            const inner=size*(layer?.09:.22),outer=size*(layer?.6:.93);
+            ctx.beginPath();
+            for(let i=0;i<16;i++) {
+                const a=i*Math.PI/8,r=i%2?inner:outer;
+                const x=Math.cos(a)*r,y=Math.sin(a)*r;
+                if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+            }
+            ctx.closePath();ctx.fillStyle=layer?'#fffef2':major?'#ff7930':'#ffd458';ctx.fill();
+        }
+        ctx.globalCompositeOperation='source-over';
+        ctx.lineWidth=major?3:2;
+        ctx.strokeStyle=major?'#b62f21':'#fff2c0';
+        ctx.globalAlpha=(1-t)*.8;
+        ctx.beginPath();ctx.arc(0,0,size*(.48+t*.75),0,Math.PI*2);ctx.stroke();
+        ctx.restore();
+    }
     function render() {
         ctx.save();if(shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
         bg();
         balls.forEach(b=>ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,b.game.hits,b.angle));
         for(const p of particles){ctx.globalAlpha=clamp(p.life/42,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size)}
         ctx.globalAlpha=1;
+        impacts.forEach(drawImpact);
         if(mode==='playing'){
             const d=TIERS[nextLevel],x=clamp(pointerX,LEFT+d.r,RIGHT-d.r);
             ctx.setLineDash([5,6]);ctx.strokeStyle='#4d6f7280';ctx.lineWidth=1.5;
