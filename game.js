@@ -244,13 +244,38 @@
         if(mode!=='playing'||gauge<50||!balls.length)return;
         gauge-=50;mode='strike';dangerSince=null;strikeEnds=currentTime+6000;
         audio.start();audio.fx('rush');speak('打撃ラッシュ！',true);
-        notify('打撃ラッシュ！！',1200);hint('6秒間、玉を連打して破壊！ 大きい玉ほど硬い');updateHud();
+        notify('打撃ラッシュ！！',1200);hint('物理停止！ 6秒間、小さな玉を連打して破壊！');updateHud();
     }
     function startThrow() {
         if(mode!=='playing'||gauge<100||!balls.length)return;
-        mode='throw';dangerSince=null;
+        gauge-=100;mode='throw';dangerSince=null;throwEnds=currentTime+3000;
+        pending=[]; // 投げ中に合体予約を持ち込まない
         audio.start();audio.fx('rush');speak('投げ！',true);
-        notify('投げラッシュ！！',1200);hint('玉を1個掴んでドラッグ、離すと投げ成功！');updateHud();
+        notify('投げラッシュ！！',1200);hint('3秒間、何度でも玉を掴んで移動！');updateHud();
+    }
+    function queueTouchingPairs() {
+        // 投げ中の接触はcollisionStartが発火済み。再開時に隣接ペアを拾い直す。
+        for(let i=0;i<balls.length;i++) {
+            for(let j=i+1;j<balls.length;j++){
+                const a=balls[i],b=balls[j];
+                if(!a.game.alive||!b.game.alive||a.game.level!==b.game.level)continue;
+                const dx=a.position.x-b.position.x,dy=a.position.y-b.position.y;
+                const d=a.circleRadius+b.circleRadius+2;
+                if(dx*dx+dy*dy<=d*d)pending.push([a,b]);
+            }
+        }
+    }
+    function finishThrow() {
+        if(mode!=='throw')return;
+        if(dragged) {
+            const b=dragged;dragged=null;
+            Body.setStatic(b,false);Body.setVelocity(b,{x:0,y:0});
+        }
+        const heldPointer=pointer;pointer=null;
+        if(heldPointer!==null&&canvas.hasPointerCapture(heldPointer))canvas.releasePointerCapture(heldPointer);
+        mode='playing';dangerSince=null;
+        queueTouchingPairs();audio.fx('hit');speak('ドリャアッ！',true);
+        notify('投げ終了！！');hint('指で位置を決め、離すと玉を落とします');updateHud();
     }
     function pick(x,y) {
         return Query.point(balls,{x,y}).sort((a,b)=>
@@ -369,8 +394,9 @@
             ctx.fillText('打撃！ 残り '+seconds.toFixed(1)+' 秒',180,27);
         }
         if(mode==='throw'){
+            const seconds=Math.max(0,(throwEnds-currentTime)/1000);
             ctx.textAlign='center';ctx.font='900 19px system-ui';ctx.fillStyle='#366f88';
-            ctx.fillText(dragged?'離して投げろ！':'玉を掴め！',180,33);
+            ctx.fillText('投げ！ 残り '+seconds.toFixed(1)+' 秒',180,33);
             if(dragged){ctx.beginPath();ctx.arc(dragged.position.x,dragged.position.y,dragged.circleRadius+7,0,Math.PI*2);
                 ctx.lineWidth=3;ctx.strokeStyle='#2699d3';ctx.stroke()}
         }
@@ -414,14 +440,8 @@
         if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
         pointer=null;
         if(mode==='throw'&&dragged){
+            // 1回離しても投げラッシュは継続。時間切れまで掴み直せる。
             const b=dragged;dragged=null;Body.setStatic(b,false);Body.setVelocity(b,{x:0,y:0});
-            if(!canceled){
-                const mate=balls.find(o=>o!==b&&o.game.alive&&o.game.level===b.game.level&&
-                    Math.hypot(o.position.x-b.position.x,o.position.y-b.position.y)<=o.circleRadius+b.circleRadius+3);
-                if(mate)pending.push([b,mate]);
-            }
-            if(!canceled){gauge=0;mode='playing';dangerSince=null;audio.fx('hit');
-                speak('ドリャアッ！',true);notify('一本！！');hint('指で位置を決め、離すと玉を落とします');updateHud()}
         }else if(mode==='playing'&&!canceled)drop();
     }
     canvas.addEventListener('pointerup',e=>{e.preventDefault();release(e)});
