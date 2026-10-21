@@ -7,7 +7,7 @@
         score: $('score'), best: $('best'), next: $('nextBall'),
         rushFill: $('rushFill'), rushPct: $('rushPct'), rushMeter: $('rushMeter'),
         rushText: $('rushText'), strike: $('strikeBtn'), throw: $('throwBtn'),
-        hint: $('hint'), dropLane: $('dropLane'), dropStatus: $('dropStatus'), dropCursor: $('dropCursor'), overlay: $('overlay'), panel: $('overlayPanel'),
+        hint: $('hint'), overlay: $('overlay'), panel: $('overlayPanel'),
         alert: $('alert'), sound: $('soundBtn'), voice: $('voiceBtn')
     };
     if (!M) {
@@ -50,7 +50,7 @@
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
     let activePlacement=null, dropReady=true;
-    let pointer=null, dropPointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
+    let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
     ui.best.textContent=best.toLocaleString('ja-JP');
@@ -250,19 +250,13 @@
         return supportHeight*supportHeight*sizeFactor*1.4;
     }
     function addGauge(n) {gauge=clamp(gauge+n,0,100);updateHud()}
-    function updateDropLane() {
-        ui.dropLane.classList.toggle('inactive',mode!=='playing');
-        ui.dropLane.classList.toggle('waiting',mode==='playing'&&!dropReady);
-        ui.dropStatus.textContent=mode!=='playing'?'ラッシュ中':dropReady?'落下OK':'落下待ち';
-        ui.dropCursor.style.left=(pointerX/W*100)+'%';
-    }
     function updatePlacement(dt) {
         if(mode!=='playing'||!activePlacement)return;
         const p=activePlacement,b=p.ball;
         if(!b||!b.game.alive) {
             // 最上位玉が消えた場合などは報酬なしで次の投下を許可。
-            activePlacement=null;dropReady=true;hint('上の帯で落とす／盤面タップで技を成立');
-            updateDropLane();return;
+            activePlacement=null;dropReady=true;hint('盤面をタップして落下／成立待ち玉は連打');
+            return;
         }
         const speed=Math.hypot(b.velocity.x,b.velocity.y);
         const spin=Math.abs(b.angularVelocity||0);
@@ -283,12 +277,10 @@
             const earned=placementGauge(b);
             if(earned>0)addGauge(earned);
             activePlacement=null;dropReady=true;
-            hint('上の帯で落とす／盤面タップで技を成立');
-            updateDropLane();
+            hint('盤面をタップして落下／成立待ち玉は連打');
         }
     }
     function updateHud() {
-        updateDropLane();
         ui.rushPct.textContent=Math.floor(gauge)+'%';
         ui.rushFill.style.width=gauge+'%';
         ui.rushMeter.setAttribute('aria-valuenow',String(Math.floor(gauge)));
@@ -411,10 +403,10 @@
         stopSpeech()
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
         activePlacement=null;dropReady=true;
-        pointerX=W/2;pointer=null;dropPointer=null;dragged=null;dangerSince=null;
+        pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
-        updateNext();updateHud();hint('上の帯で落とす／盤面タップで技を成立');
+        updateNext();updateHud();hint('盤面をタップして落下／成立待ち玉は連打');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
@@ -424,7 +416,7 @@
         lastDrop=currentTime;dropReady=false;
         activePlacement={ball:b,since:currentTime,stillMs:0,heightAnchor:null,heightStableMs:0};
         nextLevel=randomLevel();updateNext();
-        updateDropLane();hint('玉が落ち着くまで待機…');
+        hint('玉が落ち着くまで待機…');
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
     }
     function startStrike() {
@@ -462,7 +454,7 @@
         if(heldPointer!==null&&canvas.hasPointerCapture(heldPointer))canvas.releasePointerCapture(heldPointer);
         mode='playing';dangerSince=null;
         queueTouchingPairs();audio.fx('hit');speak('ドリャアッ！',true);
-        notify('投げ終了！！');hint('上の帯で落とす／盤面タップで技を成立');updateHud();
+        notify('投げ終了！！');hint('盤面をタップして落下／成立待ち玉は連打');updateHud();
     }
     function pick(x,y,onlyPending=false,extra=0) {
         // タップ専用の判定のみ広げ、物理衝突や玉同士の合体判定は変更しない。
@@ -485,7 +477,8 @@
         if(mode!=='strike'&&state!=='pending')return false;
         const b=target;
         if(state==='pending'&&currentTime>=b.game.special.expires) {
-            expireSpecial(b);return false;
+            // タップ直前に期限切れとなった場合も、誤落下には変換しない。
+            expireSpecial(b);return true;
         }
         b.game.flash=14;
         sparkle(x,y,'#ffe2a8',8);impactSpark(x,y,b.game.level,'hit');
@@ -565,7 +558,7 @@
             }
             balls.forEach(b=>{if(b.game.flash>0)b.game.flash--});
             if(mode==='strike'&&currentTime>=strikeEnds) {
-                mode='playing';queueTouchingPairs();notify('ラッシュ終了！');hint('上の帯で落とす／盤面タップで技を成立');updateHud();
+                mode='playing';queueTouchingPairs();notify('ラッシュ終了！');hint('盤面をタップして落下／成立待ち玉は連打');updateHud();
             }
             if(mode==='throw'&&currentTime>=throwEnds)finishThrow();
             checkDanger();
@@ -786,80 +779,67 @@
         const r=canvas.getBoundingClientRect();
         return {x:clamp((e.clientX-r.left)*W/r.width,0,W),y:clamp((e.clientY-r.top)*H/r.height,0,H)};
     }
-    // 上部の専用帯だけが落下入力。盤面を連打しても誤落下しない。
-    function laneX(e) {
-        const r=ui.dropLane.getBoundingClientRect();
-        return clamp((e.clientX-r.left)*W/r.width,0,W);
-    }
-    ui.dropLane.addEventListener('pointerdown',e=>{
-        if(mode!=='playing'||dropPointer!==null)return;
-        e.preventDefault();dropPointer=e.pointerId;
-        ui.dropLane.setPointerCapture(e.pointerId);
-        pointerX=laneX(e);ui.dropCursor.style.left=(pointerX/W*100)+'%';audio.start();
-    });
-    ui.dropLane.addEventListener('pointermove',e=>{
-        if(e.pointerId!==dropPointer)return;
-        e.preventDefault();pointerX=laneX(e);
-        ui.dropCursor.style.left=(pointerX/W*100)+'%';
-    });
-    function laneRelease(e,canceled=false) {
-        if(e.pointerId!==dropPointer)return;
-        dropPointer=null;
-        if(ui.dropLane.hasPointerCapture(e.pointerId))ui.dropLane.releasePointerCapture(e.pointerId);
-        // 落下用の帯はいつでも短いタップで落とせる。盤面は打撃専用。
-        if(!canceled)drop();
-    }
-    ui.dropLane.addEventListener('pointerup',e=>{e.preventDefault();laneRelease(e)});
-    ui.dropLane.addEventListener('pointercancel',e=>laneRelease(e,true));
-    ui.dropLane.addEventListener('lostpointercapture',e=>{if(e.pointerId===dropPointer)laneRelease(e,true)});
-    ui.dropLane.addEventListener('keydown',e=>{
-        if(mode!=='playing')return;
-        if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
-            e.preventDefault();pointerX=clamp(pointerX+(e.key==='ArrowLeft'?-15:15),0,W);
-            ui.dropCursor.style.left=(pointerX/W*100)+'%';
-        }else if(e.key===' '||e.key==='Enter'){
-            e.preventDefault();audio.start();drop();
-        }
-    });
+    // 盤面全体が落下エリア。ただし成立待ちの玉は、判定を12px広げて打撃を優先する。
+    // pointerdownで打撃／落下を確定し、落下だけpointerupで発動する。
+    // これにより素早い連打でも技へのタップが誤投下にならない。
     canvas.addEventListener('pointerdown',e=>{
         if(!['playing','strike','throw'].includes(mode))return;
         e.preventDefault();audio.start();
         const {x,y}=coord(e);
-        // 連打ではポインターを独占しない。両手で交互に叩いても全入力を拾う。
-        if(mode==='strike'||mode==='playing'){hit(x,y);return}
-        // 投げ中でも、別の指による成立待ち玉のタップは受け付ける。
+        if(mode==='strike'){hit(x,y);return}
+        if(mode==='playing') {
+            if(hit(x,y))return;
+            // 連打の別指や、次球準備中の空タップは無視する。
+            if(pointer!==null||!dropReady)return;
+            pointer=e.pointerId;
+            canvas.setPointerCapture(e.pointerId);
+            pointerX=x;
+            return;
+        }
+        // 投げ中も成立待ち玉をタップしたら連打として扱う。
         if(pick(x,y,true,HIT_MARGIN)){hit(x,y);return}
         if(pointer!==null)return;
         pointer=e.pointerId;canvas.setPointerCapture(e.pointerId);
-        if(mode==='throw'){
-            const b=pick(x,y);
-            if(b){
-                dragged=b;Body.setStatic(b,true);Body.setVelocity(b,{x:0,y:0});
-                Body.setPosition(b,{x:clamp(x,LEFT+b.circleRadius,RIGHT-b.circleRadius),
-                    y:clamp(y,b.circleRadius+8,FLOOR-b.circleRadius)});
-            }
+        const b=pick(x,y);
+        if(b){
+            dragged=b;Body.setStatic(b,true);Body.setVelocity(b,{x:0,y:0});
+            Body.setPosition(b,{x:clamp(x,LEFT+b.circleRadius,RIGHT-b.circleRadius),
+                y:clamp(y,b.circleRadius+8,FLOOR-b.circleRadius)});
         }
     });
     canvas.addEventListener('pointermove',e=>{
         if(pointer===null||e.pointerId!==pointer)return;
         e.preventDefault();
-        if(mode==='throw'&&dragged){
-            const {x,y}=coord(e),r=dragged.circleRadius;
+        const {x,y}=coord(e);
+        if(mode==='playing'){
+            // 空きスペースからドラッグしたときは着地点のプレビューを動かす。
+            pointerX=x;
+        }else if(mode==='throw'&&dragged){
+            const r=dragged.circleRadius;
             Body.setPosition(dragged,{x:clamp(x,LEFT+r,RIGHT-r),y:clamp(y,r+9,FLOOR-r)});
         }
     });
-    function release(e){
+    function release(e,canceled=false){
         if(e.pointerId!==pointer)return;
-        if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
         pointer=null;
+        if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
         if(mode==='throw'&&dragged){
             const b=dragged;dragged=null;
             Body.setStatic(b,false);Body.setVelocity(b,{x:0,y:0});
-        }
+        }else if(mode==='playing'&&!canceled)drop();
     }
     canvas.addEventListener('pointerup',e=>{e.preventDefault();release(e)});
-    canvas.addEventListener('pointercancel',release);
-    canvas.addEventListener('lostpointercapture',e=>{if(e.pointerId===pointer)release(e)});
+    canvas.addEventListener('pointercancel',e=>release(e,true));
+    canvas.addEventListener('lostpointercapture',e=>{if(e.pointerId===pointer)release(e,true)});
+    canvas.addEventListener('keydown',e=>{
+        if(mode!=='playing')return;
+        if(e.key==='ArrowLeft'||e.key==='ArrowRight') {
+            e.preventDefault();
+            pointerX=clamp(pointerX+(e.key==='ArrowLeft'?-15:15),0,W);
+        }else if(e.key==='Enter'||e.key===' ') {
+            e.preventDefault();audio.start();drop();
+        }
+    });
     $('primaryBtn').addEventListener('click',reset);
     ui.strike.addEventListener('click',startStrike);
     ui.throw.addEventListener('click',startThrow);
