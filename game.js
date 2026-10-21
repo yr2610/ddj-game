@@ -339,7 +339,8 @@
         if(!special||special.state!=='pending')return;
         b.game.special=null;b.game.flash=16;
         // 成立した直後の余分な連打を、新しい玉の投下として扱わない。
-        // ほかの成立待ち玉への打撃・物理・ゲージ処理は止めない。
+        // ほかの成立待ち玉への打撃・物理・ゲージ処理は止めず、
+        // その9秒カウントダウンだけ硬直中の経過分を差し戻す。
         dropBlockedUntil=Math.max(dropBlockedUntil,currentTime+SPECIAL_RECOVERY);
         points(TIERS[special.fromLevel].points);
         const name=TIERS[b.game.level].name;
@@ -561,8 +562,17 @@
     }
     function step(dt) {
         if(engine&&['playing','strike','throw'].includes(mode)){
-            // 打撃中は時計だけ進めて物理演算・合体判定を完全停止する。
+            // 成立硬直の残りとこのフレームの重なりだけを計測する。
+            // 最終フレームが硬直終了時刻を跨いでも、余計な時間を加算しない。
+            const pausedMs=Math.min(dt,Math.max(0,dropBlockedUntil-currentTime));
             currentTime+=dt;
+            if(pausedMs>0){
+                for(const b of balls){
+                    const special=b.game.special;
+                    if(special?.state==='pending')special.expires+=pausedMs;
+                }
+            }
+            // 打撃ラッシュ中は時計だけ進めて物理演算・合体判定を完全停止する。
             if(mode!=='strike')Engine.update(engine,dt);
             updateSpecials();
             if(mode==='playing') {
