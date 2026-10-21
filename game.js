@@ -7,7 +7,7 @@
         score: $('score'), best: $('best'), next: $('nextBall'),
         rushFill: $('rushFill'), rushPct: $('rushPct'), rushMeter: $('rushMeter'),
         rushText: $('rushText'), strike: $('strikeBtn'), throw: $('throwBtn'),
-        hint: $('hint'), overlay: $('overlay'), panel: $('overlayPanel'),
+        hint: $('hint'), dropLane: $('dropLane'), dropStatus: $('dropStatus'), overlay: $('overlay'), panel: $('overlayPanel'),
         alert: $('alert'), sound: $('soundBtn'), voice: $('voiceBtn')
     };
     if (!M) {
@@ -29,6 +29,14 @@
         {name:'空道',r:97,fill:'#eac775',edge:'#a57d32',points:1600},
         {name:'大道塾',r:116,fill:'#e89b75',edge:'#aa5749',points:2600}
     ];
+    // 合体して発生した特殊玉のみ3秒以内の連打で成立させる。
+    // タイムアウト後の黒玉は打撃ラッシュ中に限り指定回数で除去可能。
+    const SPECIAL = {
+        2:{hits:4,blackHits:4,blackName:'注意'},
+        4:{hits:8,blackHits:8,blackName:'警告'},
+        6:{hits:16,blackHits:16,blackName:'失格'}
+    };
+    const SPECIAL_TIME=3000;
     const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
     // スマホのWeb Speech APIは無音になり得るため、CC0の実録ボイスを使う。
     // HaelDB (CC0): https://opengameart.org/content/male-gruntyelling-sounds
@@ -41,7 +49,7 @@
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
     let activePlacement=null, dropReady=true;
-    let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
+    let pointer=null, dropPointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
     ui.best.textContent=best.toLocaleString('ja-JP');
@@ -241,13 +249,18 @@
         return supportHeight*supportHeight*sizeFactor*1.4;
     }
     function addGauge(n) {gauge=clamp(gauge+n,0,100);updateHud()}
+    function updateDropLane() {
+        ui.dropLane.classList.toggle('inactive',mode!=='playing');
+        ui.dropLane.classList.toggle('waiting',mode==='playing'&&!dropReady);
+        ui.dropStatus.textContent=mode!=='playing'?'ラッシュ中':dropReady?'落下OK':'落下待ち';
+    }
     function updatePlacement(dt) {
         if(mode!=='playing'||!activePlacement)return;
         const p=activePlacement,b=p.ball;
         if(!b||!b.game.alive) {
             // 最上位玉が消えた場合などは報酬なしで次の投下を許可。
-            activePlacement=null;dropReady=true;hint('指で位置を決め、離すと玉を落とします');
-            return;
+            activePlacement=null;dropReady=true;hint('上の帯で落とす／盤面タップで技を成立');
+            updateDropLane();return;
         }
         const speed=Math.hypot(b.velocity.x,b.velocity.y);
         const spin=Math.abs(b.angularVelocity||0);
@@ -268,10 +281,12 @@
             const earned=placementGauge(b);
             if(earned>0)addGauge(earned);
             activePlacement=null;dropReady=true;
-            hint('指で位置を決め、離すと玉を落とします');
+            hint('上の帯で落とす／盤面タップで技を成立');
+            updateDropLane();
         }
     }
     function updateHud() {
+        updateDropLane();
         ui.rushPct.textContent=Math.floor(gauge)+'%';
         ui.rushFill.style.width=gauge+'%';
         ui.rushMeter.setAttribute('aria-valuenow',String(Math.floor(gauge)));
@@ -285,6 +300,10 @@
         const d=TIERS[nextLevel];
         ui.next.textContent=d.name;ui.next.style.background=d.fill;
         ui.next.style.fontSize=d.name.length>=3?'11px':d.name.length===2?'14px':'17px';
+    }
+    function canMerge(a,b) {
+        return a.game?.alive&&b.game?.alive&&
+            !a.game.special&&!b.game.special&&a.game.level===b.game.level;
     }
     function spawnBall(level,x,y,velocity) {
         const d=TIERS[level],b=Bodies.circle(clamp(x,LEFT+d.r,RIGHT-d.r),y,d.r,{
@@ -313,6 +332,39 @@
         }
         if(particles.length>240)particles.splice(0,particles.length-240);
     }
+    function enterSpecial(b,fromLevel) {
+        const rule=SPECIAL[b.game.level];
+        b.game.special={state:'pending',fromLevel,remaining:rule.hits,expires:currentTime+SPECIAL_TIME};
+        b.game.hits=0;
+        notify(TIERS[b.game.level].name+'を叩け！',800);
+    }
+    function resolveSpecial(b) {
+        const special=b.game.special;
+        if(!special||special.state!=='pending')return;
+        b.game.special=null;b.game.flash=16;
+        points(TIERS[special.fromLevel].points);
+        const name=TIERS[b.game.level].name;
+        notify(name+'！！',800);speak(name+'！',true);
+        sparkle(b.position.x,b.position.y,'#fff3ba',18);
+        impactSpark(b.position.x,b.position.y,b.game.level,'merge');
+        // すでに触れていた同レベルの玉との合体を拾い直す。
+        if(mode==='playing')queueTouchingPairs();
+    }
+    function expireSpecial(b) {
+        const special=b.game.special;
+        if(!special||special.state!=='pending')return;
+        const rule=SPECIAL[b.game.level];
+        special.state='black';special.remaining=rule.blackHits;
+        special.expires=0;
+        b.game.flash=10;
+        sparkle(b.position.x,b.position.y,'#b85155',10);
+        notify(rule.blackName+'！ 黒玉発生',850);
+    }
+    function updateSpecials() {
+        for(const b of balls) {
+            if(b.game.special?.state==='pending'&&currentTime>=b.game.special.expires)expireSpecial(b);
+        }
+    }
     function makeWorld() {
         engine=Engine.create({enableSleeping:false});engine.gravity.y=1.3;
         engine.positionIterations=8;engine.velocityIterations=8;
@@ -325,7 +377,7 @@
         Events.on(engine,'collisionStart',ev=>{
             for(const p of ev.pairs) {
                 const a=p.bodyA,b=p.bodyB;
-                if(a.game?.alive&&b.game?.alive&&a.game.level===b.game.level&&mode==='playing'&&a!==dragged&&b!==dragged)
+                if(canMerge(a,b)&&mode==='playing'&&a!==dragged&&b!==dragged)
                     pending.push([a,b]);
             }
         });
@@ -334,39 +386,33 @@
         const jobs=pending;pending=[];const used=new Set();
         for(const [a,b] of jobs) {
             if(!a.game.alive||!b.game.alive||used.has(a.id)||used.has(b.id))continue;
-            if(a.game.level!==b.game.level)continue;
+            if(!canMerge(a,b))continue;
             used.add(a.id);used.add(b.id);
             const lv=a.game.level,x=(a.position.x+b.position.x)/2,y=(a.position.y+b.position.y)/2;
             const velocity={x:(a.velocity.x+b.velocity.x)/2,y:(a.velocity.y+b.velocity.y)/2-1};
             const tracked=activePlacement&&(activePlacement.ball===a||activePlacement.ball===b);
             removeBall(a);removeBall(b);
             const successor=lv<TIERS.length-1?spawnBall(lv+1,x,y,velocity):null;
+            if(successor&&SPECIAL[successor.game.level])enterSpecial(successor,lv);
             // 落下した玉が合体しても、後継の玉が静止するまで追いかける。
             if(tracked){
                 activePlacement.ball=successor;activePlacement.stillMs=0;
                 activePlacement.heightAnchor=null;activePlacement.heightStableMs=0;
             }
-            points(TIERS[lv].points);
+            if(!successor?.game.special)points(TIERS[lv].points);
             sparkle(x,y,TIERS[lv].fill,14+lv*2);impactSpark(x,y,lv,'merge');audio.fx('merge',lv);
             if(lv>=2)shake=Math.max(shake,lv>=5?7:lv>=3?4:1.6);
-            if(lv===1) {
-                // 蹴＋蹴で「効果」完成。
-                notify('効果！',650);
-                if(currentTime-lastMergeVoice>900){speak('効果！',true);lastMergeVoice=currentTime}
-            }else if(lv>=3) {
-                notify(lv===TIERS.length-1?'完全制覇！！':lv>=5?'一本！！':'技あり！',900);
-                if(currentTime-lastMergeVoice>900){speak(lv>=5?'一本！':'技あり！');lastMergeVoice=currentTime}
-            }
+            if(lv===TIERS.length-1)notify('完全制覇！！',900);
         }
     }
     function reset() {
         stopSpeech()
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
         activePlacement=null;dropReady=true;
-        pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
+        pointerX=W/2;pointer=null;dropPointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
-        updateNext();updateHud();hint('指で位置を決め、離すと玉を落とします');
+        updateNext();updateHud();hint('上の帯で落とす／盤面タップで技を成立');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
@@ -376,7 +422,7 @@
         lastDrop=currentTime;dropReady=false;
         activePlacement={ball:b,since:currentTime,stillMs:0,heightAnchor:null,heightStableMs:0};
         nextLevel=randomLevel();updateNext();
-        hint('玉が落ち着くまで待機…');
+        updateDropLane();hint('玉が落ち着くまで待機…');
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
     }
     function startStrike() {
@@ -397,7 +443,7 @@
         for(let i=0;i<balls.length;i++) {
             for(let j=i+1;j<balls.length;j++){
                 const a=balls[i],b=balls[j];
-                if(!a.game.alive||!b.game.alive||a.game.level!==b.game.level)continue;
+                if(!canMerge(a,b))continue;
                 const dx=a.position.x-b.position.x,dy=a.position.y-b.position.y;
                 const d=a.circleRadius+b.circleRadius+2;
                 if(dx*dx+dy*dy<=d*d)pending.push([a,b]);
@@ -414,7 +460,7 @@
         if(heldPointer!==null&&canvas.hasPointerCapture(heldPointer))canvas.releasePointerCapture(heldPointer);
         mode='playing';dangerSince=null;
         queueTouchingPairs();audio.fx('hit');speak('ドリャアッ！',true);
-        notify('投げ終了！！');hint('指で位置を決め、離すと玉を落とします');updateHud();
+        notify('投げ終了！！');hint('上の帯で落とす／盤面タップで技を成立');updateHud();
     }
     function pick(x,y) {
         return Query.point(balls,{x,y}).sort((a,b)=>
@@ -422,13 +468,39 @@
             Math.hypot(b.position.x-x,b.position.y-y)/b.circleRadius)[0]||null;
     }
     function hit(x,y) {
-        const b=pick(x,y);if(!b)return;
-        b.game.hits++;b.game.flash=14;sparkle(x,y,'#ffe2a8',8);impactSpark(x,y,b.game.level,'hit');shake=3;audio.fx('hit',b.game.level);
-        if(b.game.hits>=2**b.game.level) {
-            sparkle(b.position.x,b.position.y,'#d95a4b',16);impactSpark(b.position.x,b.position.y,b.game.level,'break');
-            removeBall(b);audio.fx('break',b.game.level);points((b.game.level+1)*3);
+        const target=pick(x,y);
+        if(!target)return false;
+        const state=target.game.special?.state;
+        // 通常時は「成立待ち」だけ叩ける。黒玉はラッシュ専用。
+        if(mode!=='strike'&&state!=='pending')return false;
+        const b=target;
+        if(state==='pending'&&currentTime>=b.game.special.expires) {
+            expireSpecial(b);return false;
         }
-        updateHud();
+        b.game.flash=14;
+        sparkle(x,y,'#ffe2a8',8);impactSpark(x,y,b.game.level,'hit');
+        shake=3;audio.fx('hit',b.game.level);
+        if(state==='pending') {
+            b.game.special.remaining--;
+            if(b.game.special.remaining<=0)resolveSpecial(b);
+        }else if(state==='black') {
+            b.game.special.remaining--;
+            if(b.game.special.remaining<=0) {
+                sparkle(b.position.x,b.position.y,'#d95a4b',16);
+                impactSpark(b.position.x,b.position.y,b.game.level,'break');
+                removeBall(b);audio.fx('break',b.game.level);
+                points((b.game.level+1)*3);
+            }
+        }else {
+            b.game.hits++;
+            if(b.game.hits>=2**b.game.level) {
+                sparkle(b.position.x,b.position.y,'#d95a4b',16);
+                impactSpark(b.position.x,b.position.y,b.game.level,'break');
+                removeBall(b);audio.fx('break',b.game.level);
+                points((b.game.level+1)*3);
+            }
+        }
+        updateHud();return true;
     }
     function end() {
         if(mode==='ended')return;
@@ -476,13 +548,14 @@
             // 打撃中は時計だけ進めて物理演算・合体判定を完全停止する。
             currentTime+=dt;
             if(mode!=='strike')Engine.update(engine,dt);
+            updateSpecials();
             if(mode==='playing') {
                 merges();
                 updatePlacement(dt);
             }
             balls.forEach(b=>{if(b.game.flash>0)b.game.flash--});
             if(mode==='strike'&&currentTime>=strikeEnds) {
-                mode='playing';notify('ラッシュ終了！');hint('指で位置を決め、離すと玉を落とします');updateHud();
+                mode='playing';queueTouchingPairs();notify('ラッシュ終了！');hint('上の帯で落とす／盤面タップで技を成立');updateHud();
             }
             if(mode==='throw'&&currentTime>=throwEnds)finishThrow();
             checkDanger();
@@ -543,19 +616,22 @@
         ctx.fillStyle='#fff1dd';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.fillText('危険ライン',48,DANGER+22);
         ctx.fillStyle='#785738';ctx.fillRect(0,FLOOR,W,H-FLOOR);
     }
-    function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0) {
+    function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
         ctx.shadowColor='#2b27233d';ctx.shadowBlur=7;ctx.shadowOffsetY=4;
         ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
         const g=ctx.createRadialGradient(-r*.32,-r*.35,r*.1,0,0,r);
-        g.addColorStop(0,flash>0?'#fff2b0':'#fff5ce');g.addColorStop(.3,d.fill);g.addColorStop(1,d.edge);
+        g.addColorStop(0,black?(flash>0?'#9e4549':'#515158'):(flash>0?'#fff2b0':'#fff5ce'));
+        g.addColorStop(.3,black?'#33343b':d.fill);g.addColorStop(1,black?'#16191e':d.edge);
         ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;
         ctx.strokeStyle='#344755';ctx.lineWidth=r>35?3:2;ctx.stroke();
         ctx.beginPath();ctx.arc(-r*.2,-r*.26,r*.48,Math.PI*1.1,Math.PI*1.62);
         ctx.strokeStyle='#ffffff72';ctx.lineWidth=Math.max(2,r*.08);ctx.stroke();
-        ctx.fillStyle='#1d2b35';ctx.font=Math.min(r*1.20,lv>=7?38:40)+'px "Yuji Boku","Yu Mincho",serif';
-        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(d.name,0,1,r*1.75);
-        if(hits){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText(hits+'/'+(2**lv),0,r*.73)}
+        ctx.fillStyle=black?'#f4ebe1':'#1d2b35';
+        ctx.font=Math.min(r*1.20,lv>=7?38:40)+'px "Yuji Boku","Yu Mincho",serif';
+        const name=black?SPECIAL[lv].blackName:d.name;
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(name,0,black?-r*.11:1,r*1.75);
+        if(hits&&!black){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText(hits+'/'+(2**lv),0,r*.73)}
         ctx.restore();
     }
     // 「デュクシ！」に合わせた、短い白黄の8方向星型スパークと赤橙の衝撃線。
@@ -615,10 +691,39 @@
         ctx.globalCompositeOperation='source-over';
         ctx.restore();
     }
+    function drawSpecialOverlay(b) {
+        const special=b.game.special;
+        if(!special)return;
+        const r=b.circleRadius,x=b.position.x,y=b.position.y;
+        const pending=special.state==='pending';
+        ctx.save();ctx.translate(x,y);ctx.textAlign='center';ctx.textBaseline='middle';
+        if(pending) {
+            const time=clamp((special.expires-currentTime)/SPECIAL_TIME,0,1);
+            ctx.strokeStyle=time<.35?'#df3833':'#fff7db';
+            ctx.lineWidth=4;ctx.beginPath();
+            ctx.arc(0,0,r+2,-Math.PI/2,-Math.PI/2+Math.PI*2*time);ctx.stroke();
+            ctx.fillStyle='#24292c';ctx.font='900 '+Math.min(22,r*.55)+'px system-ui';
+            ctx.fillText(String(special.remaining),0,r*.42);
+            ctx.fillStyle='#a32b28';ctx.font='bold '+Math.max(9,Math.min(13,r*.25))+'px system-ui';
+            ctx.fillText((Math.max(0,special.expires-currentTime)/1000).toFixed(1)+'秒',0,-r*.78);
+        }else{
+            ctx.strokeStyle='#dd4a3d';ctx.lineWidth=3;
+            ctx.beginPath();ctx.arc(0,0,r-2,0,Math.PI*2);ctx.stroke();
+            if(mode==='strike') {
+                ctx.fillStyle='#fbe7a9';ctx.font='bold '+Math.min(22,r*.55)+'px system-ui';
+                ctx.fillText('残'+special.remaining,0,r*.46);
+            }
+        }
+        ctx.restore();
+    }
     function render() {
         ctx.save();if(shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
         bg();
-        balls.forEach(b=>ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,b.game.hits,b.angle));
+        balls.forEach(b=>{
+            const black=b.game.special?.state==='black';
+            ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,b.game.hits,b.angle,black);
+            drawSpecialOverlay(b);
+        });
         for(const p of particles){ctx.globalAlpha=clamp(p.life/42,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size)}
         ctx.globalAlpha=1;
         impacts.forEach(drawImpact);
@@ -655,39 +760,75 @@
         const r=canvas.getBoundingClientRect();
         return {x:clamp((e.clientX-r.left)*W/r.width,0,W),y:clamp((e.clientY-r.top)*H/r.height,0,H)};
     }
+    // 上部の専用帯だけが落下入力。盤面を連打しても誤落下しない。
+    function laneX(e) {
+        const r=ui.dropLane.getBoundingClientRect();
+        return clamp((e.clientX-r.left)*W/r.width,0,W);
+    }
+    ui.dropLane.addEventListener('pointerdown',e=>{
+        if(mode!=='playing'||dropPointer!==null)return;
+        e.preventDefault();dropPointer=e.pointerId;
+        ui.dropLane.setPointerCapture(e.pointerId);
+        pointerX=laneX(e);audio.start();
+    });
+    ui.dropLane.addEventListener('pointermove',e=>{
+        if(e.pointerId!==dropPointer)return;
+        e.preventDefault();pointerX=laneX(e);
+    });
+    function laneRelease(e,canceled=false) {
+        if(e.pointerId!==dropPointer)return;
+        if(ui.dropLane.hasPointerCapture(e.pointerId))ui.dropLane.releasePointerCapture(e.pointerId);
+        dropPointer=null;
+        if(!canceled)drop();
+    }
+    ui.dropLane.addEventListener('pointerup',e=>{e.preventDefault();laneRelease(e)});
+    ui.dropLane.addEventListener('pointercancel',e=>laneRelease(e,true));
+    ui.dropLane.addEventListener('lostpointercapture',e=>{if(e.pointerId===dropPointer)laneRelease(e,true)});
+    ui.dropLane.addEventListener('keydown',e=>{
+        if(mode!=='playing')return;
+        if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+            e.preventDefault();pointerX=clamp(pointerX+(e.key==='ArrowLeft'?-15:15),0,W);
+        }else if(e.key===' '||e.key==='Enter'){
+            e.preventDefault();audio.start();drop();
+        }
+    });
     canvas.addEventListener('pointerdown',e=>{
         if(!['playing','strike','throw'].includes(mode)||pointer!==null)return;
         e.preventDefault();pointer=e.pointerId;canvas.setPointerCapture(e.pointerId);
-        audio.start();const {x,y}=coord(e);pointerX=x;
+        audio.start();const {x,y}=coord(e);
         if(mode==='strike'){hit(x,y);return}
+        if(mode==='playing'){hit(x,y);return}
         if(mode==='throw'){
+            // 投げ中も成立待ち玉なら連打を優先する。
             const b=pick(x,y);
-            if(b){dragged=b;Body.setStatic(b,true);Body.setVelocity(b,{x:0,y:0});
+            if(b?.game.special?.state==='pending'){hit(x,y);return}
+            if(b){
+                dragged=b;Body.setStatic(b,true);Body.setVelocity(b,{x:0,y:0});
                 Body.setPosition(b,{x:clamp(x,LEFT+b.circleRadius,RIGHT-b.circleRadius),
-                    y:clamp(y,b.circleRadius+8,FLOOR-b.circleRadius)})}
+                    y:clamp(y,b.circleRadius+8,FLOOR-b.circleRadius)});
+            }
         }
     });
     canvas.addEventListener('pointermove',e=>{
-        if(pointer!==null&&e.pointerId!==pointer)return;
-        const {x,y}=coord(e);pointerX=x;
-        if(pointer!==null)e.preventDefault();
-        if(mode==='throw'&&dragged&&pointer!==null){
-            const r=dragged.circleRadius;
+        if(pointer===null||e.pointerId!==pointer)return;
+        e.preventDefault();
+        if(mode==='throw'&&dragged){
+            const {x,y}=coord(e),r=dragged.circleRadius;
             Body.setPosition(dragged,{x:clamp(x,LEFT+r,RIGHT-r),y:clamp(y,r+9,FLOOR-r)});
         }
     });
-    function release(e,canceled=false){
+    function release(e){
         if(e.pointerId!==pointer)return;
         if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
         pointer=null;
         if(mode==='throw'&&dragged){
-            // 1回離しても投げラッシュは継続。時間切れまで掴み直せる。
-            const b=dragged;dragged=null;Body.setStatic(b,false);Body.setVelocity(b,{x:0,y:0});
-        }else if(mode==='playing'&&!canceled)drop();
+            const b=dragged;dragged=null;
+            Body.setStatic(b,false);Body.setVelocity(b,{x:0,y:0});
+        }
     }
     canvas.addEventListener('pointerup',e=>{e.preventDefault();release(e)});
-    canvas.addEventListener('pointercancel',e=>release(e,true));
-    canvas.addEventListener('lostpointercapture',e=>{if(e.pointerId===pointer)release(e,true)});
+    canvas.addEventListener('pointercancel',release);
+    canvas.addEventListener('lostpointercapture',e=>{if(e.pointerId===pointer)release(e)});
     $('primaryBtn').addEventListener('click',reset);
     ui.strike.addEventListener('click',startStrike);
     ui.throw.addEventListener('click',startThrow);
