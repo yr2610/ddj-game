@@ -50,7 +50,7 @@
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
     let engine, balls=[], pending=[], particles=[], impacts=[];
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
-    let currentTime=0, lastDrop=-5000, recoveryRemaining=0, dangerSince=null, strikeEnds=0, throwEnds=0;
+    let currentTime=0, lastDrop=-5000, dropBlockedUntil=0, dangerSince=null, strikeEnds=0, throwEnds=0;
     let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
@@ -339,17 +339,14 @@
         const special=b.game.special;
         if(!special||special.state!=='pending')return;
         b.game.special=null;b.game.flash=16;
-        // 技成立でゲーム本体の時刻と物理演算を700ms完全停止する。
-        // その間はほかの成立待ち玉、危険ライン、ラッシュ等も止まる。
-        recoveryRemaining=SPECIAL_RECOVERY;
-        // 成立前から押されていた落下/ドラッグ入力を硬直後に持ち越さない。
-        if(pointer!==null){
+        // 技の成立後700msは「次の投下だけ」を禁止する。
+        // 玉の物理、ほかの技への連打・タイマー、危険判定、ラッシュは継続する。
+        dropBlockedUntil=Math.max(dropBlockedUntil,currentTime+SPECIAL_RECOVERY);
+        // 成立前に別の指で開始された落下操作が、後から投下にならないよう破棄。
+        // 投げラッシュのドラッグ操作には干渉しない。
+        if(mode==='playing'&&pointer!==null){
             const id=pointer;pointer=null;
             if(canvas.hasPointerCapture(id))canvas.releasePointerCapture(id);
-        }
-        if(dragged){
-            const held=dragged;dragged=null;
-            Body.setStatic(held,false);Body.setVelocity(held,{x:0,y:0});
         }
         points(TIERS[special.fromLevel].points);
         const name=TIERS[b.game.level].name;
@@ -427,13 +424,13 @@
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
         activePlacements=[];dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
-        currentTime=0;lastDrop=-5000;recoveryRemaining=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
+        currentTime=0;lastDrop=-5000;dropBlockedUntil=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
         updateNext();updateHud();hint('盤面をタップして落下／成立待ち玉は連打');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
-        if(mode!=='playing'||recoveryRemaining>0||!dropReady||currentTime-lastDrop<DROP_COOLDOWN)return;
+        if(mode!=='playing'||currentTime<dropBlockedUntil||!dropReady||currentTime-lastDrop<DROP_COOLDOWN)return;
         const droppedLevel=nextLevel;
         const b=spawnBall(droppedLevel,pointerX,SPAWN);
         lastDrop=currentTime;dropReady=false;
@@ -443,13 +440,13 @@
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
     }
     function startStrike() {
-        if(mode!=='playing'||recoveryRemaining>0||gauge<50||!balls.length)return;
+        if(mode!=='playing'||gauge<50||!balls.length)return;
         gauge-=50;mode='strike';dangerSince=null;strikeEnds=currentTime+STRIKE_TIME;
         audio.start();audio.fx('rush');speak('打撃ラッシュ！',true);
         notify('打撃ラッシュ！！',1200);hint('物理停止！ 6秒間、黒玉を連打して処分！');updateHud();
     }
     function startThrow() {
-        if(mode!=='playing'||recoveryRemaining>0||gauge<100||!balls.length)return;
+        if(mode!=='playing'||gauge<100||!balls.length)return;
         gauge-=100;mode='throw';dangerSince=null;throwEnds=currentTime+THROW_TIME;
         pending=[]; // 投げ中に合体予約を持ち込まない
         audio.start();audio.fx('rush');speak('投げ！',true);
@@ -493,7 +490,6 @@
             Math.hypot(b.position.x-x,b.position.y-y)/(b.circleRadius+extra))[0]||null;
     }
     function hit(x,y) {
-        if(recoveryRemaining>0)return false;
         const target=pick(x,y,mode!=='strike',HIT_MARGIN);
         if(!target)return false;
         const state=target.game.special?.state;
@@ -572,14 +568,7 @@
     }
     function step(dt) {
         if(engine&&['playing','strike','throw'].includes(mode)){
-            // HUD宣告以外のゲーム時計・物理・エフェクト更新を完全停止。
-            // 700msの残り時間だけを別時計で進め、端数フレームは通常更新に使う。
-            if(recoveryRemaining>0){
-                const frozen=Math.min(dt,recoveryRemaining);
-                recoveryRemaining=Math.max(0,recoveryRemaining-frozen);
-                dt-=frozen;
-                if(dt<.001)return;
-            }
+            // 成立直後もゲーム時計・物理演算・連打タイマーは進める。
             currentTime+=dt;
             // 打撃ラッシュ中は時計だけ進めて物理演算・合体判定を完全停止する。
             if(mode!=='strike')Engine.update(engine,dt);
@@ -771,7 +760,7 @@
         ctx.restore();
     }
     function render() {
-        ctx.save();if(recoveryRemaining<=0&&shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+        ctx.save();if(shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
         bg();
         balls.forEach(b=>{
             const black=b.game.special?.state==='black';
@@ -837,14 +826,13 @@
     canvas.addEventListener('pointerdown',e=>{
         if(!['playing','strike','throw'].includes(mode))return;
         e.preventDefault();
-        if(recoveryRemaining>0)return;
         audio.start();
         const {x,y}=coord(e);
         if(mode==='strike'){hit(x,y);return}
         if(mode==='playing') {
             if(hit(x,y))return;
-            // 成立直後の硬直中は入り口で全入力を無効化する。
-            if(pointer!==null||!dropReady)return;
+            // 別の技の連打は上のhitで先に処理する。落下操作だけ短時間無効。
+            if(pointer!==null||!dropReady||currentTime<dropBlockedUntil)return;
             pointer=e.pointerId;
             canvas.setPointerCapture(e.pointerId);
             pointerX=x;
@@ -862,7 +850,7 @@
         }
     });
     canvas.addEventListener('pointermove',e=>{
-        if(recoveryRemaining>0||pointer===null||e.pointerId!==pointer)return;
+        if(pointer===null||e.pointerId!==pointer)return;
         e.preventDefault();
         const {x,y}=coord(e);
         if(mode==='playing'){
@@ -886,7 +874,7 @@
     canvas.addEventListener('pointercancel',e=>release(e,true));
     canvas.addEventListener('lostpointercapture',e=>{if(e.pointerId===pointer)release(e,true)});
     canvas.addEventListener('keydown',e=>{
-        if(mode!=='playing'||recoveryRemaining>0)return;
+        if(mode!=='playing')return;
         if(e.key==='ArrowLeft'||e.key==='ArrowRight') {
             e.preventDefault();
             pointerX=clamp(pointerX+(e.key==='ArrowLeft'?-15:15),0,W);
