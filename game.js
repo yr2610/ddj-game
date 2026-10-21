@@ -510,8 +510,8 @@
         mode='ended';updateHud();audio.fx('end');speak('そこまで！',true);notify('そこまで！！',1350);
         const rank=score>=25000?'塾長級':score>=14000?'五段':score>=8000?'三段':
             score>=5000?'初段':score>=2500?'一級':score>=1000?'五級':'十級';
-        ui.panel.innerHTML='<div class="panel-kicker">一本勝負</div>'+
-            '<h1 style="font-size:39px">結果発表</h1>'+
+        ui.panel.innerHTML='<div class="panel-kicker">一本勝負・勝負あり</div>'+
+            '<h1 class="result-headline">結果発表</h1>'+
             '<div class="result">得点 <strong>'+score.toLocaleString('ja-JP')+
             '</strong><span class="result-small">ゲーム内段位認定</span><b>'+rank+'</b></div>'+
             '<button id="retryBtn" class="primary-btn">もう一本！ 始め！！</button>'+
@@ -530,7 +530,7 @@
         const msg='大道塾で '+score.toLocaleString('ja-JP')+'点！ '+rank+'認定！ セイッ！ ヤーッ！';
         const u=location.href.split('#')[0];
         try{
-            if(navigator.share){await navigator.share({title:'大道塾',text:msg,url:u});return}
+            if(navigator.share){await navigator.share({title:'大道塾藝夢',text:msg,url:u});return}
             if(navigator.clipboard?.writeText){
                 await navigator.clipboard.writeText(msg+'\n'+u);$('shareBtn').textContent='コピーしました！';return
             }
