@@ -37,6 +37,7 @@
         6:{hits:16,blackHits:16,blackName:'失格'}
     };
     const SPECIAL_TIME=3000;
+    const HIT_MARGIN=12; // 通常画面でも当てやすいよう玉の輪郭から12pxまで許容。
     const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
     // スマホのWeb Speech APIは無音になり得るため、CC0の実録ボイスを使う。
     // HaelDB (CC0): https://opengameart.org/content/male-gruntyelling-sounds
@@ -49,7 +50,8 @@
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
     let activePlacement=null, dropReady=true;
-    let pointer=null, dropPointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
+    let pointer=null, dropPointer=null, laneStartX=0, laneMove=0, laneStartAt=0;
+    let dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
     ui.best.textContent=best.toLocaleString('ja-JP');
@@ -410,7 +412,8 @@
         stopSpeech()
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
         activePlacement=null;dropReady=true;
-        pointerX=W/2;pointer=null;dropPointer=null;dragged=null;dangerSince=null;
+        pointerX=W/2;pointer=null;dropPointer=null;laneMove=0;laneStartAt=0;
+        dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
         updateNext();updateHud();hint('上の帯で落とす／盤面タップで技を成立');
@@ -463,15 +466,21 @@
         queueTouchingPairs();audio.fx('hit');speak('ドリャアッ！',true);
         notify('投げ終了！！');hint('上の帯で落とす／盤面タップで技を成立');updateHud();
     }
-    function pick(x,y,onlyPending=false) {
-        const candidates=Query.point(balls,{x,y});
-        const available=onlyPending?candidates.filter(b=>b.game.special?.state==='pending'):candidates;
+    function pick(x,y,onlyPending=false,extra=0) {
+        // タップ専用の判定のみ広げ、物理衝突や玉同士の合体判定は変更しない。
+        const candidates=extra>0?
+            balls.filter(b=>b.game.alive&&
+                Math.hypot(b.position.x-x,b.position.y-y)<=b.circleRadius+extra):
+            Query.point(balls,{x,y});
+        const available=onlyPending?
+            candidates.filter(b=>b.game.special?.state==='pending'):candidates;
+        // 複数の許容範囲が重なっても最も近い玉を優先する。
         return available.sort((a,b)=>
-            Math.hypot(a.position.x-x,a.position.y-y)/a.circleRadius-
-            Math.hypot(b.position.x-x,b.position.y-y)/b.circleRadius)[0]||null;
+            Math.hypot(a.position.x-x,a.position.y-y)/(a.circleRadius+extra)-
+            Math.hypot(b.position.x-x,b.position.y-y)/(b.circleRadius+extra))[0]||null;
     }
     function hit(x,y) {
-        const target=pick(x,y,mode!=='strike');
+        const target=pick(x,y,mode!=='strike',HIT_MARGIN);
         if(!target)return false;
         const state=target.game.special?.state;
         // 通常時は「成立待ち」だけ叩ける。黒玉はラッシュ専用。
@@ -770,22 +779,35 @@
         const r=ui.dropLane.getBoundingClientRect();
         return clamp((e.clientX-r.left)*W/r.width,0,W);
     }
+    function hasPendingSpecial() {
+        return balls.some(b=>b.game.special?.state==='pending');
+    }
     ui.dropLane.addEventListener('pointerdown',e=>{
         if(mode!=='playing'||dropPointer!==null)return;
         e.preventDefault();dropPointer=e.pointerId;
+        laneStartX=laneX(e);laneMove=0;laneStartAt=performance.now();
         ui.dropLane.setPointerCapture(e.pointerId);
-        pointerX=laneX(e);ui.dropCursor.style.left=(pointerX/W*100)+'%';audio.start();
+        pointerX=laneStartX;ui.dropCursor.style.left=(pointerX/W*100)+'%';audio.start();
     });
     ui.dropLane.addEventListener('pointermove',e=>{
         if(e.pointerId!==dropPointer)return;
         e.preventDefault();pointerX=laneX(e);
+        laneMove=Math.max(laneMove,Math.abs(pointerX-laneStartX));
         ui.dropCursor.style.left=(pointerX/W*100)+'%';
     });
     function laneRelease(e,canceled=false) {
         if(e.pointerId!==dropPointer)return;
-        if(ui.dropLane.hasPointerCapture(e.pointerId))ui.dropLane.releasePointerCapture(e.pointerId);
+        const deliberate=laneMove>=12||performance.now()-laneStartAt>=180;
         dropPointer=null;
-        if(!canceled)drop();
+        if(ui.dropLane.hasPointerCapture(e.pointerId))ui.dropLane.releasePointerCapture(e.pointerId);
+        if(canceled)return;
+        // 特殊玉を連打している時の帯への誤タップで新しい玉を落とさない。
+        // 通常の投下は今までどおりタップだけでも実行できる。
+        if(hasPendingSpecial()&&!deliberate) {
+            hint('連打中の誤落下を防止：落とす時は帯を左右に動かすか少し長押し');
+            return;
+        }
+        drop();
     }
     ui.dropLane.addEventListener('pointerup',e=>{e.preventDefault();laneRelease(e)});
     ui.dropLane.addEventListener('pointercancel',e=>laneRelease(e,true));
@@ -806,7 +828,7 @@
         // 連打ではポインターを独占しない。両手で交互に叩いても全入力を拾う。
         if(mode==='strike'||mode==='playing'){hit(x,y);return}
         // 投げ中でも、別の指による成立待ち玉のタップは受け付ける。
-        if(pick(x,y,true)){hit(x,y);return}
+        if(pick(x,y,true,HIT_MARGIN)){hit(x,y);return}
         if(pointer!==null)return;
         pointer=e.pointerId;canvas.setPointerCapture(e.pointerId);
         if(mode==='throw'){
