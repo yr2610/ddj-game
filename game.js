@@ -17,6 +17,7 @@
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
     const W = 360, H = 525, FLOOR = 515, LEFT = 11, RIGHT = 349, DANGER = 96, SPAWN = 48;
     const DROP_COOLDOWN=500, SPECIAL_RECOVERY=700, DANGER_GRACE=6600;
+    const STRIKE_TIME=6000, THROW_TIME=6000, RUSH_COUNTDOWN=3000;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -443,16 +444,16 @@
     }
     function startStrike() {
         if(mode!=='playing'||recoveryRemaining>0||gauge<50||!balls.length)return;
-        gauge-=50;mode='strike';dangerSince=null;strikeEnds=currentTime+6000;
+        gauge-=50;mode='strike';dangerSince=null;strikeEnds=currentTime+STRIKE_TIME;
         audio.start();audio.fx('rush');speak('打撃ラッシュ！',true);
         notify('打撃ラッシュ！！',1200);hint('物理停止！ 6秒間、黒玉を連打して処分！');updateHud();
     }
     function startThrow() {
         if(mode!=='playing'||recoveryRemaining>0||gauge<100||!balls.length)return;
-        gauge-=100;mode='throw';dangerSince=null;throwEnds=currentTime+3000;
+        gauge-=100;mode='throw';dangerSince=null;throwEnds=currentTime+THROW_TIME;
         pending=[]; // 投げ中に合体予約を持ち込まない
         audio.start();audio.fx('rush');speak('投げ！',true);
-        notify('投げラッシュ！！',1200);hint('3秒間、何度でも玉を掴んで移動！');updateHud();
+        notify('投げラッシュ！！',1200);hint('6秒間、何度でも玉を掴んで移動！');updateHud();
     }
     function queueTouchingPairs() {
         // 投げ中の接触はcollisionStartが発火済み。再開時に隣接ペアを拾い直す。
@@ -736,6 +737,39 @@
         }
         ctx.restore();
     }
+    // ラッシュの最後3秒だけ、中央に大きな数字を重ねる。
+    // Canvasへの描画だけなので、玉への打撃や掴み操作の入力領域は変わらない。
+    function drawRushCountdown(endTime,isThrow){
+        const remain=(endTime-currentTime)/1000;
+        if(remain<=0||remain>RUSH_COUNTDOWN/1000)return;
+        const digit=Math.ceil(remain);
+        const fractional=remain-(digit-1);
+        const pop=1+.12*Math.max(0,1-(1-fractional)*4);
+        const centerY=H*.49;
+        ctx.save();
+        ctx.translate(W/2,centerY);
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        // 描画を半透明に抑え、背景の玉を見失わないようにする。
+        ctx.fillStyle='rgba(11,10,18,.51)';
+        round(-82,-90,164,27,5);ctx.fill();
+        ctx.fillStyle=isThrow?'#c2f1ff':'#ffe7a9';
+        ctx.font='900 15px system-ui';
+        ctx.fillText('ラッシュ残り',0,-76);
+        ctx.save();
+        ctx.scale(pop,pop);
+        ctx.globalAlpha=.82;
+        ctx.font='1000 112px system-ui';
+        ctx.lineWidth=8;ctx.lineJoin='round';
+        ctx.strokeStyle='rgba(9,8,12,.8)';
+        ctx.strokeText(String(digit),0,7);
+        ctx.lineWidth=3;
+        ctx.strokeStyle=isThrow?'#387e9e':'#aa382b';
+        ctx.strokeText(String(digit),0,7);
+        ctx.fillStyle=isThrow?'#d9f8ff':'#fff0bd';
+        ctx.fillText(String(digit),0,7);
+        ctx.restore();
+        ctx.restore();
+    }
     function render() {
         ctx.save();if(recoveryRemaining<=0&&shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
         bg();
@@ -766,6 +800,8 @@
             if(dragged){ctx.beginPath();ctx.arc(dragged.position.x,dragged.position.y,dragged.circleRadius+7,0,Math.PI*2);
                 ctx.lineWidth=3;ctx.strokeStyle='#2699d3';ctx.stroke()}
         }
+        if(mode==='strike')drawRushCountdown(strikeEnds,false);
+        if(mode==='throw')drawRushCountdown(throwEnds,true);
         if(dangerSince!==null&&mode==='playing'){
             const progress=clamp((currentTime-dangerSince)/DANGER_GRACE,0,1);
             // 画面全体を赤く明滅させる。玉の判別は維持し、解除時に即停止する。
