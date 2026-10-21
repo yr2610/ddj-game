@@ -141,13 +141,13 @@ body {
     text-shadow:1px 1px 0 #19060b;
     box-shadow:2px 3px 0 #07080c;
 }
-.overlay-panel .game-title {
+.overlay-panel h1.game-title {
     position:relative;
     display:block;
     margin:4px -6px 1px;
     padding:0;
     width:calc(100% + 12px);
-    line-height:1;
+    line-height:0;
     white-space:nowrap;
     font-size:0;
     text-shadow:none;
