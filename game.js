@@ -49,7 +49,7 @@
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
     let engine, balls=[], pending=[], particles=[], impacts=[];
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
-    let currentTime=0, lastDrop=-5000, dropBlockedUntil=0, dangerSince=null, strikeEnds=0, throwEnds=0;
+    let currentTime=0, lastDrop=-5000, recoveryRemaining=0, dangerSince=null, strikeEnds=0, throwEnds=0;
     let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
@@ -338,10 +338,18 @@
         const special=b.game.special;
         if(!special||special.state!=='pending')return;
         b.game.special=null;b.game.flash=16;
-        // 成立した直後の余分な連打を、新しい玉の投下として扱わない。
-        // ほかの成立待ち玉への打撃・物理・ゲージ処理は止めず、
-        // その9秒カウントダウンだけ硬直中の経過分を差し戻す。
-        dropBlockedUntil=Math.max(dropBlockedUntil,currentTime+SPECIAL_RECOVERY);
+        // 技成立でゲーム本体の時刻と物理演算を700ms完全停止する。
+        // その間はほかの成立待ち玉、危険ライン、ラッシュ等も止まる。
+        recoveryRemaining=SPECIAL_RECOVERY;
+        // 成立前から押されていた落下/ドラッグ入力を硬直後に持ち越さない。
+        if(pointer!==null){
+            const id=pointer;pointer=null;
+            if(canvas.hasPointerCapture(id))canvas.releasePointerCapture(id);
+        }
+        if(dragged){
+            const held=dragged;dragged=null;
+            Body.setStatic(held,false);Body.setVelocity(held,{x:0,y:0});
+        }
         points(TIERS[special.fromLevel].points);
         const name=TIERS[b.game.level].name;
         notify(name+'！！',800);speak(name+'！',true);
@@ -418,13 +426,13 @@
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
         activePlacements=[];dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
-        currentTime=0;lastDrop=-5000;dropBlockedUntil=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
+        currentTime=0;lastDrop=-5000;recoveryRemaining=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
         updateNext();updateHud();hint('盤面をタップして落下／成立待ち玉は連打');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
-        if(mode!=='playing'||!dropReady||currentTime-lastDrop<DROP_COOLDOWN||currentTime<dropBlockedUntil)return;
+        if(mode!=='playing'||recoveryRemaining>0||!dropReady||currentTime-lastDrop<DROP_COOLDOWN)return;
         const droppedLevel=nextLevel;
         const b=spawnBall(droppedLevel,pointerX,SPAWN);
         lastDrop=currentTime;dropReady=false;
@@ -434,13 +442,13 @@
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
     }
     function startStrike() {
-        if(mode!=='playing'||gauge<50||!balls.length)return;
+        if(mode!=='playing'||recoveryRemaining>0||gauge<50||!balls.length)return;
         gauge-=50;mode='strike';dangerSince=null;strikeEnds=currentTime+6000;
         audio.start();audio.fx('rush');speak('打撃ラッシュ！',true);
         notify('打撃ラッシュ！！',1200);hint('物理停止！ 6秒間、黒玉を連打して処分！');updateHud();
     }
     function startThrow() {
-        if(mode!=='playing'||gauge<100||!balls.length)return;
+        if(mode!=='playing'||recoveryRemaining>0||gauge<100||!balls.length)return;
         gauge-=100;mode='throw';dangerSince=null;throwEnds=currentTime+3000;
         pending=[]; // 投げ中に合体予約を持ち込まない
         audio.start();audio.fx('rush');speak('投げ！',true);
@@ -484,6 +492,7 @@
             Math.hypot(b.position.x-x,b.position.y-y)/(b.circleRadius+extra))[0]||null;
     }
     function hit(x,y) {
+        if(recoveryRemaining>0)return false;
         const target=pick(x,y,mode!=='strike',HIT_MARGIN);
         if(!target)return false;
         const state=target.game.special?.state;
@@ -562,16 +571,15 @@
     }
     function step(dt) {
         if(engine&&['playing','strike','throw'].includes(mode)){
-            // 成立硬直の残りとこのフレームの重なりだけを計測する。
-            // 最終フレームが硬直終了時刻を跨いでも、余計な時間を加算しない。
-            const pausedMs=Math.min(dt,Math.max(0,dropBlockedUntil-currentTime));
-            currentTime+=dt;
-            if(pausedMs>0){
-                for(const b of balls){
-                    const special=b.game.special;
-                    if(special?.state==='pending')special.expires+=pausedMs;
-                }
+            // HUD宣告以外のゲーム時計・物理・エフェクト更新を完全停止。
+            // 700msの残り時間だけを別時計で進め、端数フレームは通常更新に使う。
+            if(recoveryRemaining>0){
+                const frozen=Math.min(dt,recoveryRemaining);
+                recoveryRemaining=Math.max(0,recoveryRemaining-frozen);
+                dt-=frozen;
+                if(dt<.001)return;
             }
+            currentTime+=dt;
             // 打撃ラッシュ中は時計だけ進めて物理演算・合体判定を完全停止する。
             if(mode!=='strike')Engine.update(engine,dt);
             updateSpecials();
@@ -729,7 +737,7 @@
         ctx.restore();
     }
     function render() {
-        ctx.save();if(shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+        ctx.save();if(recoveryRemaining<=0&&shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
         bg();
         balls.forEach(b=>{
             const black=b.game.special?.state==='black';
@@ -792,14 +800,15 @@
     // これにより素早い連打でも技へのタップが誤投下にならない。
     canvas.addEventListener('pointerdown',e=>{
         if(!['playing','strike','throw'].includes(mode))return;
-        e.preventDefault();audio.start();
+        e.preventDefault();
+        if(recoveryRemaining>0)return;
+        audio.start();
         const {x,y}=coord(e);
         if(mode==='strike'){hit(x,y);return}
         if(mode==='playing') {
             if(hit(x,y))return;
-            // 成立直後の連打の余韻を吸収し、落下用のpointerを作らない。
-            // 既存の成立待ち玉への打撃判定はこの手前で行う。
-            if(pointer!==null||!dropReady||currentTime<dropBlockedUntil)return;
+            // 成立直後の硬直中は入り口で全入力を無効化する。
+            if(pointer!==null||!dropReady)return;
             pointer=e.pointerId;
             canvas.setPointerCapture(e.pointerId);
             pointerX=x;
@@ -817,7 +826,7 @@
         }
     });
     canvas.addEventListener('pointermove',e=>{
-        if(pointer===null||e.pointerId!==pointer)return;
+        if(recoveryRemaining>0||pointer===null||e.pointerId!==pointer)return;
         e.preventDefault();
         const {x,y}=coord(e);
         if(mode==='playing'){
@@ -841,7 +850,7 @@
     canvas.addEventListener('pointercancel',e=>release(e,true));
     canvas.addEventListener('lostpointercapture',e=>{if(e.pointerId===pointer)release(e,true)});
     canvas.addEventListener('keydown',e=>{
-        if(mode!=='playing')return;
+        if(mode!=='playing'||recoveryRemaining>0)return;
         if(e.key==='ArrowLeft'||e.key==='ArrowRight') {
             e.preventDefault();
             pointerX=clamp(pointerX+(e.key==='ArrowLeft'?-15:15),0,W);
