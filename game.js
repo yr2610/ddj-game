@@ -15,8 +15,8 @@
         return;
     }
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
-    const W = 360, H = 570, FLOOR = 560, LEFT = 11, RIGHT = 349, DANGER = 88, SPAWN = 48;
-    const DROP_COOLDOWN=500, DANGER_GRACE=6600;
+    const W = 360, H = 525, FLOOR = 515, LEFT = 11, RIGHT = 349, DANGER = 96, SPAWN = 48;
+    const DROP_COOLDOWN=500, SPECIAL_RECOVERY=700, DANGER_GRACE=6600;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -49,7 +49,7 @@
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
     let engine, balls=[], pending=[], particles=[], impacts=[];
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
-    let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
+    let currentTime=0, lastDrop=-5000, dropBlockedUntil=0, dangerSince=null, strikeEnds=0, throwEnds=0;
     let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
@@ -338,6 +338,9 @@
         const special=b.game.special;
         if(!special||special.state!=='pending')return;
         b.game.special=null;b.game.flash=16;
+        // 成立した直後の余分な連打を、新しい玉の投下として扱わない。
+        // ほかの成立待ち玉への打撃・物理・ゲージ処理は止めない。
+        dropBlockedUntil=Math.max(dropBlockedUntil,currentTime+SPECIAL_RECOVERY);
         points(TIERS[special.fromLevel].points);
         const name=TIERS[b.game.level].name;
         notify(name+'！！',800);speak(name+'！',true);
@@ -414,13 +417,13 @@
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
         activePlacements=[];dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
-        currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
+        currentTime=0;lastDrop=-5000;dropBlockedUntil=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
         updateNext();updateHud();hint('盤面をタップして落下／成立待ち玉は連打');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
-        if(mode!=='playing'||!dropReady||currentTime-lastDrop<DROP_COOLDOWN)return;
+        if(mode!=='playing'||!dropReady||currentTime-lastDrop<DROP_COOLDOWN||currentTime<dropBlockedUntil)return;
         const droppedLevel=nextLevel;
         const b=spawnBall(droppedLevel,pointerX,SPAWN);
         lastDrop=currentTime;dropReady=false;
@@ -784,8 +787,9 @@
         if(mode==='strike'){hit(x,y);return}
         if(mode==='playing') {
             if(hit(x,y))return;
-            // 連打の別指や、次球準備中の空タップは無視する。
-            if(pointer!==null||!dropReady)return;
+            // 成立直後の連打の余韻を吸収し、落下用のpointerを作らない。
+            // 既存の成立待ち玉への打撃判定はこの手前で行う。
+            if(pointer!==null||!dropReady||currentTime<dropBlockedUntil)return;
             pointer=e.pointerId;
             canvas.setPointerCapture(e.pointerId);
             pointerX=x;
