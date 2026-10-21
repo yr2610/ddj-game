@@ -15,7 +15,8 @@
         return;
     }
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
-    const W = 360, H = 480, FLOOR = 470, LEFT = 11, RIGHT = 349, DANGER = 103, SPAWN = 48;
+    const W = 360, H = 570, FLOOR = 560, LEFT = 11, RIGHT = 349, DANGER = 88, SPAWN = 48;
+    const DROP_COOLDOWN=750, DANGER_GRACE=6600;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -29,7 +30,7 @@
         {name:'空道',r:97,fill:'#eac775',edge:'#a57d32',points:1600},
         {name:'大道塾',r:116,fill:'#e89b75',edge:'#aa5749',points:2600}
     ];
-    // 合体して発生した特殊玉のみ3秒以内の連打で成立させる。
+    // 合体して発生した特殊玉のみ9秒以内の連打で成立させる。
     // タイムアウト後の黒玉は打撃ラッシュ中に限り指定回数で除去可能。
     const SPECIAL = {
         2:{hits:4,blackHits:4,blackName:'注意'},
@@ -49,7 +50,7 @@
     let engine, balls=[], pending=[], particles=[], impacts=[];
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
-    let activePlacement=null, dropReady=true;
+    let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
@@ -250,34 +251,35 @@
         return supportHeight*supportHeight*sizeFactor*1.4;
     }
     function addGauge(n) {gauge=clamp(gauge+n,0,100);updateHud()}
-    function updatePlacement(dt) {
-        if(mode!=='playing'||!activePlacement)return;
-        const p=activePlacement,b=p.ball;
-        if(!b||!b.game.alive) {
-            // 最上位玉が消えた場合などは報酬なしで次の投下を許可。
-            activePlacement=null;dropReady=true;hint('盤面をタップして落下／成立待ち玉は連打');
-            return;
+    // 次球の解禁は経過時間だけで決定する。着地や物理速度に依存しない。
+    function updateDropCooldown(){
+        if(mode==='playing'&&!dropReady&&currentTime-lastDrop>=DROP_COOLDOWN){
+            dropReady=true;hint('盤面をタップして落下／成立待ち玉は連打');
         }
-        const speed=Math.hypot(b.velocity.x,b.velocity.y);
-        const spin=Math.abs(b.angularVelocity||0);
-        // 通常の低速静止判定に加え、Y位置が一定なら横方向の転がりを許す。
-        // 毎フレームの差分では遅い落下も誤検出するため、
-        // 観測開始時の底面Yからの累積ずれで判定する。
-        const bottom=b.position.y+b.circleRadius;
-        if(p.heightAnchor===null||Math.abs(bottom-p.heightAnchor)>2.5){
-            p.heightAnchor=bottom;p.heightStableMs=0;
-        }else{
-            p.heightStableMs+=dt;
-        }
-        p.stillMs=(speed<.85&&Math.abs(b.velocity.y)<.25&&spin<.055)?p.stillMs+dt:0;
-        const elapsed=currentTime-p.since;
-        const resting=(p.stillMs>=180||p.heightStableMs>=220);
-        // 落下中の一瞬の頂点を静止扱いせず、転がり続けても3.2秒で解禁。
-        if((elapsed>=460&&resting)||elapsed>=3200) {
-            const earned=placementGauge(b);
-            if(earned>0)addGauge(earned);
-            activePlacement=null;dropReady=true;
-            hint('盤面をタップして落下／成立待ち玉は連打');
+    }
+    // ゲージは従来どおり「高さがほぼ停止した時」に確定する。
+    // 連続して次を落としても、それぞれの玉の着地高さを追跡し続ける。
+    function updatePlacements(dt) {
+        if(mode!=='playing')return;
+        for(let i=activePlacements.length-1;i>=0;i--){
+            const p=activePlacements[i],b=p.ball;
+            if(!b||!b.game.alive){activePlacements.splice(i,1);continue}
+            const speed=Math.hypot(b.velocity.x,b.velocity.y);
+            const spin=Math.abs(b.angularVelocity||0);
+            const bottom=b.position.y+b.circleRadius;
+            if(p.heightAnchor===null||Math.abs(bottom-p.heightAnchor)>2.5){
+                p.heightAnchor=bottom;p.heightStableMs=0;
+            }else{
+                p.heightStableMs+=dt;
+            }
+            p.stillMs=(speed<.85&&Math.abs(b.velocity.y)<.25&&spin<.055)?p.stillMs+dt:0;
+            const elapsed=currentTime-p.since;
+            const resting=p.stillMs>=180||p.heightStableMs>=220;
+            if((elapsed>=460&&resting)||elapsed>=3200){
+                const earned=placementGauge(b);
+                if(earned>0)addGauge(earned);
+                activePlacements.splice(i,1);
+            }
         }
     }
     function updateHud() {
@@ -384,14 +386,14 @@
             used.add(a.id);used.add(b.id);
             const lv=a.game.level,x=(a.position.x+b.position.x)/2,y=(a.position.y+b.position.y)/2;
             const velocity={x:(a.velocity.x+b.velocity.x)/2,y:(a.velocity.y+b.velocity.y)/2-1};
-            const tracked=activePlacement&&(activePlacement.ball===a||activePlacement.ball===b);
+            const tracked=activePlacements.filter(p=>p.ball===a||p.ball===b);
             removeBall(a);removeBall(b);
             const successor=lv<TIERS.length-1?spawnBall(lv+1,x,y,velocity):null;
             if(successor&&SPECIAL[successor.game.level])enterSpecial(successor,lv);
-            // 落下した玉が合体しても、後継の玉が静止するまで追いかける。
-            if(tracked){
-                activePlacement.ball=successor;activePlacement.stillMs=0;
-                activePlacement.heightAnchor=null;activePlacement.heightStableMs=0;
+            // 合体で玉が変わっても、各投下分の高さ判定を継続する。
+            for(const p of tracked){
+                p.ball=successor;p.stillMs=0;
+                p.heightAnchor=null;p.heightStableMs=0;
             }
             if(!successor?.game.special)points(TIERS[lv].points);
             sparkle(x,y,TIERS[lv].fill,14+lv*2);impactSpark(x,y,lv,'merge');audio.fx('merge',lv);
@@ -402,7 +404,7 @@
     function reset() {
         stopSpeech()
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
-        activePlacement=null;dropReady=true;
+        activePlacements=[];dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
@@ -410,13 +412,13 @@
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
-        if(mode!=='playing'||!dropReady||currentTime-lastDrop<460)return;
+        if(mode!=='playing'||!dropReady||currentTime-lastDrop<DROP_COOLDOWN)return;
         const droppedLevel=nextLevel;
         const b=spawnBall(droppedLevel,pointerX,SPAWN);
         lastDrop=currentTime;dropReady=false;
-        activePlacement={ball:b,since:currentTime,stillMs:0,heightAnchor:null,heightStableMs:0};
+        activePlacements.push({ball:b,since:currentTime,stillMs:0,heightAnchor:null,heightStableMs:0});
         nextLevel=randomLevel();updateNext();
-        hint('玉が落ち着くまで待機…');
+        hint('次の玉まで一瞬待機…');
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
     }
     function startStrike() {
@@ -544,7 +546,7 @@
             (Math.hypot(b.velocity.x,b.velocity.y)<2.3||b.position.y<40));
         if(!threat){dangerSince=null;return}
         if(dangerSince===null)dangerSince=currentTime;
-        if(currentTime-dangerSince>=2200)end();
+        if(currentTime-dangerSince>=DANGER_GRACE)end();
     }
     function step(dt) {
         if(engine&&['playing','strike','throw'].includes(mode)){
@@ -554,7 +556,8 @@
             updateSpecials();
             if(mode==='playing') {
                 merges();
-                updatePlacement(dt);
+                updateDropCooldown();
+                updatePlacements(dt);
             }
             balls.forEach(b=>{if(b.game.flash>0)b.game.flash--});
             if(mode==='strike'&&currentTime>=strikeEnds) {
@@ -570,54 +573,23 @@
         if(shake>0)shake*=.72;
     }
     function round(x,y,w,h,r) {ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
-    // 背景の「大道塾」は筆文字を一度だけ描き、細いかすれを抜いたスタンプにする。
-    // 毎フレームCanvasに筆文字や乱数を描かず、描画負荷を一定に抑える。
-    let brushStamp=null;
-    function buildBrushStamp() {
-        const image=document.createElement('canvas');
-        image.width=256;image.height=352;
-        const ink=image.getContext('2d');
-        ink.save();ink.translate(128,176);ink.rotate(-.065);
-        ink.fillStyle='#784c32';
-        ink.font='100px "Yuji Boku","Yu Mincho","Hiragino Mincho ProN",serif';
-        ink.textAlign='center';ink.textBaseline='middle';
-        ink.fillText('大',0,-103);ink.fillText('道',0,0);ink.fillText('塾',0,103);
-        ink.restore();
-        // 不規則な細い透明線で墨のかすれを演出。固定シードでちらつきを防ぐ。
-        ink.globalCompositeOperation='destination-out';
-        let seed=17419;
-        const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
-        for(let i=0;i<95;i++){
-            const x=39+rand()*178,y=16+rand()*321;
-            ink.globalAlpha=.15+rand()*.53;
-            ink.strokeStyle='#000';
-            ink.lineWidth=.45+rand()*1.5;
-            ink.beginPath();ink.moveTo(x,y);
-            ink.lineTo(x+3+rand()*12,y-(1+rand()*5));
-            ink.stroke();
+    // 夕焼けの岩山と滝を一度読み込み、Canvas上へ描画。暗めの被せで玉を見やすくする。
+    // 画像が読めない場合は単色の背景にフォールバック。
+    const scenery=new window.Image();
+    scenery.decoding='async';
+    scenery.src='./assets/waterfall-sunset.webp?v=20261021-waterfall1';
+    function bg(){
+        ctx.fillStyle='#433444';ctx.fillRect(0,0,W,H);
+        if(scenery.complete&&scenery.naturalWidth>0){
+            ctx.drawImage(scenery,0,0,W,H);
+            ctx.fillStyle='rgba(12,10,18,.34)';ctx.fillRect(0,0,W,H);
         }
-        return image;
-    }
-    if(document.fonts&&document.fonts.ready) {
-        // Webフォント読み込み前の代替字体をキャッシュし続けない。
-        document.fonts.ready.then(()=>{brushStamp=null});
-    }
-    function bg() {
-        const g=ctx.createLinearGradient(0,0,W,H);
-        g.addColorStop(0,'#f5e7cb');g.addColorStop(1,'#e5d0a9');
-        ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-        ctx.strokeStyle='#d0b992';ctx.lineWidth=1;
-        for(let x=45;x<W;x+=45){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,FLOOR);ctx.stroke()}
-        if(!brushStamp)brushStamp=buildBrushStamp();
-        ctx.save();ctx.globalAlpha=.105;
-        ctx.drawImage(brushStamp,52,129);
-        ctx.restore();
-        ctx.fillStyle='#c65b4410';ctx.fillRect(0,0,W,DANGER);
-        ctx.setLineDash([9,7]);ctx.lineWidth=2.3;ctx.strokeStyle='#bc6957';
+        ctx.fillStyle='#bb222d26';ctx.fillRect(0,0,W,DANGER);
+        ctx.setLineDash([9,7]);ctx.lineWidth=2.3;ctx.strokeStyle='#ffccaa';
         ctx.beginPath();ctx.moveTo(0,DANGER);ctx.lineTo(W,DANGER);ctx.stroke();ctx.setLineDash([]);
-        round(9,DANGER+7,78,21,4);ctx.fillStyle='#9e5146bf';ctx.fill();
+        round(9,DANGER+7,79,21,4);ctx.fillStyle='#6b1b2ae8';ctx.fill();
         ctx.fillStyle='#fff1dd';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.fillText('危険ライン',48,DANGER+22);
-        ctx.fillStyle='#785738';ctx.fillRect(0,FLOOR,W,H-FLOOR);
+        ctx.fillStyle='#2b2526b8';ctx.fillRect(0,FLOOR,W,H-FLOOR);
     }
     function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
@@ -766,7 +738,7 @@
                 ctx.lineWidth=3;ctx.strokeStyle='#2699d3';ctx.stroke()}
         }
         if(dangerSince!==null&&mode==='playing'){
-            ctx.fillStyle='#b93a2a';ctx.fillRect(0,0,W*clamp((currentTime-dangerSince)/2200,0,1),5);
+            ctx.fillStyle='#b93a2a';ctx.fillRect(0,0,W*clamp((currentTime-dangerSince)/DANGER_GRACE,0,1),5);
         }
         ctx.restore();
     }
