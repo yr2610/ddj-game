@@ -800,14 +800,16 @@
         }
     });
     canvas.addEventListener('pointerdown',e=>{
-        if(!['playing','strike','throw'].includes(mode)||pointer!==null)return;
-        e.preventDefault();pointer=e.pointerId;canvas.setPointerCapture(e.pointerId);
-        audio.start();const {x,y}=coord(e);
-        if(mode==='strike'){hit(x,y);return}
-        if(mode==='playing'){hit(x,y);return}
+        if(!['playing','strike','throw'].includes(mode))return;
+        e.preventDefault();audio.start();
+        const {x,y}=coord(e);
+        // 連打ではポインターを独占しない。両手で交互に叩いても全入力を拾う。
+        if(mode==='strike'||mode==='playing'){hit(x,y);return}
+        // 投げ中でも、別の指による成立待ち玉のタップは受け付ける。
+        if(pick(x,y,true)){hit(x,y);return}
+        if(pointer!==null)return;
+        pointer=e.pointerId;canvas.setPointerCapture(e.pointerId);
         if(mode==='throw'){
-            // 投げ中も成立待ち玉なら連打を優先する。
-            if(pick(x,y,true)){hit(x,y);return}
             const b=pick(x,y);
             if(b){
                 dragged=b;Body.setStatic(b,true);Body.setVelocity(b,{x:0,y:0});
