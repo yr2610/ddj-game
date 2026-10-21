@@ -36,7 +36,7 @@
         4:{hits:8,blackHits:8,blackName:'警告'},
         6:{hits:16,blackHits:16,blackName:'失格'}
     };
-    const SPECIAL_TIME=3000;
+    const SPECIAL_TIME=9000;
     const HIT_MARGIN=12; // 通常画面でも当てやすいよう玉の輪郭から12pxまで許容。
     const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
     // スマホのWeb Speech APIは無音になり得るため、CC0の実録ボイスを使う。
@@ -50,8 +50,7 @@
     let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dangerSince=null, strikeEnds=0, throwEnds=0;
     let activePlacement=null, dropReady=true;
-    let pointer=null, dropPointer=null, laneStartX=0, laneMove=0, laneStartAt=0;
-    let dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
+    let pointer=null, dropPointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
     ui.best.textContent=best.toLocaleString('ja-JP');
@@ -412,8 +411,7 @@
         stopSpeech()
         balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
         activePlacement=null;dropReady=true;
-        pointerX=W/2;pointer=null;dropPointer=null;laneMove=0;laneStartAt=0;
-        dragged=null;dangerSince=null;
+        pointerX=W/2;pointer=null;dropPointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
         updateNext();updateHud();hint('上の帯で落とす／盤面タップで技を成立');
@@ -718,8 +716,22 @@
             ctx.arc(0,0,r+2,-Math.PI/2,-Math.PI/2+Math.PI*2*time);ctx.stroke();
             ctx.fillStyle='#24292c';ctx.font='900 '+Math.min(22,r*.55)+'px system-ui';
             ctx.fillText(String(special.remaining),0,r*.42);
-            ctx.fillStyle='#a32b28';ctx.font='bold '+Math.max(9,Math.min(13,r*.25))+'px system-ui';
-            ctx.fillText((Math.max(0,special.expires-currentTime)/1000).toFixed(1)+'秒',0,-r*.78);
+            const seconds=Math.ceil(Math.max(0,special.expires-currentTime)/1000);
+            ctx.fillStyle='#a32b28';ctx.font='bold '+Math.max(11,Math.min(16,r*.28))+'px system-ui';
+            ctx.fillText(seconds+'秒',0,-r*.78);
+            // 「この玉を叩け！」を知らせる百裂拳風の高速脈動。
+            // 玉の外側なので残り回数・秒数と重ならない。
+            const phase=(currentTime%220)/220*Math.PI*2;
+            const punch=(1+Math.sin(phase))*0.5;
+            const side=x>W/2?-1:1;
+            ctx.save();
+            ctx.translate(side*(r+7-4*punch),-r*.6);
+            ctx.scale(.80+.35*punch,.80+.35*punch);
+            ctx.globalAlpha=.60+.40*punch;
+            ctx.shadowColor='#f7e4af';ctx.shadowBlur=3+5*punch;
+            ctx.font=Math.max(18,Math.min(25,r*.40))+'px "Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif';
+            ctx.fillText('👊',0,0);
+            ctx.restore();
         }else{
             ctx.strokeStyle='#dd4a3d';ctx.lineWidth=3;
             ctx.beginPath();ctx.arc(0,0,r-2,0,Math.PI*2);ctx.stroke();
@@ -779,35 +791,23 @@
         const r=ui.dropLane.getBoundingClientRect();
         return clamp((e.clientX-r.left)*W/r.width,0,W);
     }
-    function hasPendingSpecial() {
-        return balls.some(b=>b.game.special?.state==='pending');
-    }
     ui.dropLane.addEventListener('pointerdown',e=>{
         if(mode!=='playing'||dropPointer!==null)return;
         e.preventDefault();dropPointer=e.pointerId;
-        laneStartX=laneX(e);laneMove=0;laneStartAt=performance.now();
         ui.dropLane.setPointerCapture(e.pointerId);
-        pointerX=laneStartX;ui.dropCursor.style.left=(pointerX/W*100)+'%';audio.start();
+        pointerX=laneX(e);ui.dropCursor.style.left=(pointerX/W*100)+'%';audio.start();
     });
     ui.dropLane.addEventListener('pointermove',e=>{
         if(e.pointerId!==dropPointer)return;
         e.preventDefault();pointerX=laneX(e);
-        laneMove=Math.max(laneMove,Math.abs(pointerX-laneStartX));
         ui.dropCursor.style.left=(pointerX/W*100)+'%';
     });
     function laneRelease(e,canceled=false) {
         if(e.pointerId!==dropPointer)return;
-        const deliberate=laneMove>=12||performance.now()-laneStartAt>=180;
         dropPointer=null;
         if(ui.dropLane.hasPointerCapture(e.pointerId))ui.dropLane.releasePointerCapture(e.pointerId);
-        if(canceled)return;
-        // 特殊玉を連打している時の帯への誤タップで新しい玉を落とさない。
-        // 通常の投下は今までどおりタップだけでも実行できる。
-        if(hasPendingSpecial()&&!deliberate) {
-            hint('連打中の誤落下を防止：落とす時は帯を左右に動かすか少し長押し');
-            return;
-        }
-        drop();
+        // 落下用の帯はいつでも短いタップで落とせる。盤面は打撃専用。
+        if(!canceled)drop();
     }
     ui.dropLane.addEventListener('pointerup',e=>{e.preventDefault();laneRelease(e)});
     ui.dropLane.addEventListener('pointercancel',e=>laneRelease(e,true));
