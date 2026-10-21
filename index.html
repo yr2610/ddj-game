@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#101d29">
   <meta name="description" content="突・蹴・効果を合体！ 打撃と投げのラッシュで逆転を狙う、一人用のお気楽落ち物ゲーム。">
-  <meta property="og:title" content="大道塾 — 一本勝負！">
+  <meta property="og:title" content="大道塾藝夢 — 一本勝負！">
   <meta property="og:description" content="セイッ！ ヤーッ！ 漢字のボールを合体させるおバカ武道パズル。">
-  <title>大道塾｜一本勝負！</title>
+  <title>大道塾藝夢｜一本勝負！</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Yuji+Boku&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=20261021-title1">
+  <link rel="stylesheet" href="./styles.css?v=20261021-arcade1">
   <script defer src="./vendor/matter.min.js"></script>
   <script defer src="./game.js?v=20261021-anywhere1"></script>
 </head>
@@ -31,8 +31,39 @@
       <div id="alert" class="alert" aria-live="polite" aria-atomic="true"></div>
       <div id="overlay" class="overlay">
         <div class="overlay-panel" id="overlayPanel">
-          <div class="panel-kicker">非公式・武道風パズル</div>
-          <h1 class="game-title">大道塾藝夢</h1>
+          <div class="panel-kicker">熱血落下格闘遊戯</div>
+                    <h1 class="game-title" aria-label="大道塾藝夢">
+            <span class="title-seal" aria-hidden="true">押忍!!</span>
+            <svg class="title-emblem" viewBox="0 0 660 160" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+              <defs>
+                <radialGradient id="fight-halo" cx="50%" cy="50%" r="50%">
+                  <stop offset="0" stop-color="#ed7942" stop-opacity=".73"/>
+                  <stop offset=".48" stop-color="#9e261d" stop-opacity=".38"/>
+                  <stop offset="1" stop-color="#4b1218" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="fight-ink" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#fff5cb"/>
+                  <stop offset=".24" stop-color="#f3c66e"/>
+                  <stop offset=".47" stop-color="#de803f"/>
+                  <stop offset=".53" stop-color="#b43127"/>
+                  <stop offset="1" stop-color="#621d1e"/>
+                </linearGradient>
+                <clipPath id="logo-letter-clip">
+                  <text class="logo-letter" x="330" y="119" font-size="119" text-anchor="middle" textLength="588" lengthAdjust="spacingAndGlyphs">大道塾藝夢</text>
+                </clipPath>
+              </defs>
+              <ellipse cx="324" cy="83" rx="300" ry="84" fill="url(#fight-halo)"/>
+              <path class="logo-burst" d="M23 132 85 112 M37 36 96 58 M103 7 143 42 M560 8 522 43 M642 21 586 54 M652 135 587 118"/>
+              <path d="M64 139 107 143 M566 147 610 141" fill="none" stroke="#e8a867" stroke-width="4"/>
+              <text class="logo-letter" x="330" y="119" font-size="119" text-anchor="middle" textLength="588" lengthAdjust="spacingAndGlyphs" transform="translate(8 10)" fill="#08070b" stroke="#07060a" stroke-width="25" stroke-linejoin="round" paint-order="stroke fill">大道塾藝夢</text>
+              <text class="logo-letter" x="330" y="119" font-size="119" text-anchor="middle" textLength="588" lengthAdjust="spacingAndGlyphs" fill="#9d4225" stroke="#f3c883" stroke-width="20" stroke-linejoin="round" paint-order="stroke fill">大道塾藝夢</text>
+              <text class="logo-letter" x="330" y="119" font-size="119" text-anchor="middle" textLength="588" lengthAdjust="spacingAndGlyphs" fill="url(#fight-ink)" stroke="#290a12" stroke-width="9" stroke-linejoin="round" paint-order="stroke fill">大道塾藝夢</text>
+              <g clip-path="url(#logo-letter-clip)" opacity=".47" fill="none" stroke="#fee6b0" stroke-linecap="square">
+                <path d="M32 31 139 9 M158 52 242 30 M307 26 397 9 M460 72 561 48 M514 109 616 92" stroke-width="4"/>
+                <path d="M75 129 151 111 M235 97 275 89 M342 108 411 91 M443 131 508 114" stroke-width="2"/>
+              </g>
+            </svg>
+          </h1>
           <p class="panel-slogan">落として、くっつけて、叩いて、セイッ！！</p>
           <div class="rule-card">同じ文字の玉を合わせて進化！<br><strong>効果4発・技あり8発・一本16発を9秒以内に叩いて成立！</strong><br>失敗した黒玉は打撃ラッシュでのみ破壊可能。<br>上の赤線を越えると試合終了。<br>ゲージ50%で6秒打撃、100%で3秒投げ！</div>
           <button id="primaryBtn" class="primary-btn" type="button">一本勝負！ 始め！！</button>
