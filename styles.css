@@ -14,3 +14,17 @@
 .next-ball{font-family:var(--brush-font);font-weight:400}
 
 @media(max-height:700px){.brand{font-size:19px}}
+
+/* 独立した落下操作帯。盤面のタップはすべて打撃専用。 */
+.arena-stage{display:flex;flex-direction:column;gap:6px;width:100%;max-width:min(100%,calc(75dvh - 220px));margin-inline:auto;flex-shrink:0}
+.arena-stage .arena-shell{width:100%;max-width:100%;max-height:none;margin:0;flex-shrink:1}
+.drop-lane{position:relative;width:100%;height:45px;border:2px solid #78aec2;border-radius:9px;background:linear-gradient(180deg,#28647f,#17394c);box-shadow:inset 0 1px 3px #09192370;color:#f5f1df;touch-action:none;user-select:none;cursor:crosshair;display:flex;align-items:flex-start;justify-content:space-between;gap:3px;padding:5px 9px 14px;font-size:12px;overflow:hidden}
+.drop-lane:focus-visible{outline:3px solid #f5c267;outline-offset:2px}
+.drop-caption{pointer-events:none;white-space:nowrap;font-weight:700;font-size:clamp(9px,2.4vw,12px)}
+.drop-status{pointer-events:none;white-space:nowrap;font-size:10px;color:#ffe4a4;letter-spacing:.03em}
+.drop-cursor{position:absolute;pointer-events:none;bottom:1px;left:50%;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:9px solid #f5df83;transform:translateX(-50%);filter:drop-shadow(0 1px 2px #06131c)}
+.drop-lane.waiting{background:linear-gradient(180deg,#42606a,#274453)}
+.drop-lane.waiting .drop-status{color:#d2dadb}
+.drop-lane.inactive{opacity:.56;cursor:default}
+@media(max-height:700px){.arena-stage{gap:4px;max-width:min(100%,calc(75dvh - 199px))}.drop-lane{height:39px;padding-top:4px;padding-bottom:12px}}
+@media(max-width:340px){.drop-lane{padding-left:5px;padding-right:5px}.drop-caption{font-size:9px}.drop-status{font-size:9px}}
