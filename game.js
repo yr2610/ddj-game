@@ -16,7 +16,7 @@
     }
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
     const W = 360, H = 570, FLOOR = 560, LEFT = 11, RIGHT = 349, DANGER = 88, SPAWN = 48;
-    const DROP_COOLDOWN=750, DANGER_GRACE=6600;
+    const DROP_COOLDOWN=500, DANGER_GRACE=6600;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -391,7 +391,15 @@
             const successor=lv<TIERS.length-1?spawnBall(lv+1,x,y,velocity):null;
             if(successor&&SPECIAL[successor.game.level])enterSpecial(successor,lv);
             // 合体で玉が変わっても、各投下分の高さ判定を継続する。
-            for(const p of tracked){
+            if(tracked.length>1){
+                // 2発の落下玉が合体したとき、同じ後継球のゲージを二重加算しない。
+                for(const p of tracked.slice(1)){
+                    const i=activePlacements.indexOf(p);
+                    if(i>=0)activePlacements.splice(i,1);
+                }
+            }
+            if(tracked.length){
+                const p=tracked[0];
                 p.ball=successor;p.stillMs=0;
                 p.heightAnchor=null;p.heightStableMs=0;
             }
@@ -738,7 +746,22 @@
                 ctx.lineWidth=3;ctx.strokeStyle='#2699d3';ctx.stroke()}
         }
         if(dangerSince!==null&&mode==='playing'){
-            ctx.fillStyle='#b93a2a';ctx.fillRect(0,0,W*clamp((currentTime-dangerSince)/DANGER_GRACE,0,1),5);
+            const progress=clamp((currentTime-dangerSince)/DANGER_GRACE,0,1);
+            // 画面全体を赤く明滅させる。玉の判別は維持し、解除時に即停止する。
+            const pulse=.5+.5*Math.sin(currentTime*Math.PI*2/430);
+            ctx.fillStyle='rgba(222,14,21,'+(.065+.20*pulse)+')';
+            ctx.fillRect(0,0,W,H);
+            ctx.lineWidth=8+5*pulse;
+            ctx.strokeStyle='rgba(255,65,48,'+(.40+.43*pulse)+')';
+            ctx.strokeRect(3,3,W-6,H-6);
+            ctx.fillStyle='#ff332e';
+            ctx.fillRect(0,0,W*progress,6);
+            // 危険の残り秒数を上部中央に表示（打撃ラッシュ中は消える）。
+            ctx.fillStyle='#fff7e2';
+            ctx.font='900 15px system-ui';
+            ctx.textAlign='center';
+            ctx.shadowColor='#1c090e';ctx.shadowBlur=4;
+            ctx.fillText('危険！ 残り '+Math.ceil((DANGER_GRACE-(currentTime-dangerSince))/1000)+' 秒',W/2,19);
         }
         ctx.restore();
     }
