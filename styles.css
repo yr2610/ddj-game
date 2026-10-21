@@ -17,3 +17,6 @@
 
 /* 盤面全体をタップで落下／特殊玉を叩く。キーボードでも操作可能。 */
 #arena:focus-visible{outline:3px solid #f5c267;outline-offset:-3px}
+
+/* タイトル画面の五文字「大道塾藝夢」をスマホでも改行せず表示。 */
+.overlay-panel h1.game-title{font-size:clamp(32px,9vw,48px);letter-spacing:.015em;white-space:nowrap;line-height:1.22}
