@@ -7,7 +7,7 @@
         score: $('score'), best: $('best'), next: $('nextBall'),
         rushFill: $('rushFill'), rushPct: $('rushPct'), rushMeter: $('rushMeter'),
         rushText: $('rushText'), strike: $('strikeBtn'), throw: $('throwBtn'),
-        hint: $('hint'), dropLane: $('dropLane'), dropStatus: $('dropStatus'), overlay: $('overlay'), panel: $('overlayPanel'),
+        hint: $('hint'), dropLane: $('dropLane'), dropStatus: $('dropStatus'), dropCursor: $('dropCursor'), overlay: $('overlay'), panel: $('overlayPanel'),
         alert: $('alert'), sound: $('soundBtn'), voice: $('voiceBtn')
     };
     if (!M) {
@@ -253,6 +253,7 @@
         ui.dropLane.classList.toggle('inactive',mode!=='playing');
         ui.dropLane.classList.toggle('waiting',mode==='playing'&&!dropReady);
         ui.dropStatus.textContent=mode!=='playing'?'ラッシュ中':dropReady?'落下OK':'落下待ち';
+        ui.dropCursor.style.left=(pointerX/W*100)+'%';
     }
     function updatePlacement(dt) {
         if(mode!=='playing'||!activePlacement)return;
@@ -429,7 +430,7 @@
         if(mode!=='playing'||gauge<50||!balls.length)return;
         gauge-=50;mode='strike';dangerSince=null;strikeEnds=currentTime+6000;
         audio.start();audio.fx('rush');speak('打撃ラッシュ！',true);
-        notify('打撃ラッシュ！！',1200);hint('物理停止！ 6秒間、小さな玉を連打して破壊！');updateHud();
+        notify('打撃ラッシュ！！',1200);hint('物理停止！ 6秒間、黒玉を連打して処分！');updateHud();
     }
     function startThrow() {
         if(mode!=='playing'||gauge<100||!balls.length)return;
@@ -462,13 +463,15 @@
         queueTouchingPairs();audio.fx('hit');speak('ドリャアッ！',true);
         notify('投げ終了！！');hint('上の帯で落とす／盤面タップで技を成立');updateHud();
     }
-    function pick(x,y) {
-        return Query.point(balls,{x,y}).sort((a,b)=>
+    function pick(x,y,onlyPending=false) {
+        const candidates=Query.point(balls,{x,y});
+        const available=onlyPending?candidates.filter(b=>b.game.special?.state==='pending'):candidates;
+        return available.sort((a,b)=>
             Math.hypot(a.position.x-x,a.position.y-y)/a.circleRadius-
             Math.hypot(b.position.x-x,b.position.y-y)/b.circleRadius)[0]||null;
     }
     function hit(x,y) {
-        const target=pick(x,y);
+        const target=pick(x,y,mode!=='strike');
         if(!target)return false;
         const state=target.game.special?.state;
         // 通常時は「成立待ち」だけ叩ける。黒玉はラッシュ専用。
@@ -616,7 +619,7 @@
         ctx.fillStyle='#fff1dd';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.fillText('危険ライン',48,DANGER+22);
         ctx.fillStyle='#785738';ctx.fillRect(0,FLOOR,W,H-FLOOR);
     }
-    function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false) {
+    function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
         ctx.shadowColor='#2b27233d';ctx.shadowBlur=7;ctx.shadowOffsetY=4;
         ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
@@ -628,9 +631,11 @@
         ctx.beginPath();ctx.arc(-r*.2,-r*.26,r*.48,Math.PI*1.1,Math.PI*1.62);
         ctx.strokeStyle='#ffffff72';ctx.lineWidth=Math.max(2,r*.08);ctx.stroke();
         ctx.fillStyle=black?'#f4ebe1':'#1d2b35';
-        ctx.font=Math.min(r*1.20,lv>=7?38:40)+'px "Yuji Boku","Yu Mincho",serif';
+        const nameSize=pending?Math.min(r*.7,32):Math.min(r*1.20,lv>=7?38:40);
+        ctx.font=nameSize+'px "Yuji Boku","Yu Mincho",serif';
         const name=black?SPECIAL[lv].blackName:d.name;
-        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(name,0,black?-r*.11:1,r*1.75);
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(name,0,pending?-r*.28:black?-r*.11:1,r*1.75);
         if(hits&&!black){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText(hits+'/'+(2**lv),0,r*.73)}
         ctx.restore();
     }
@@ -721,7 +726,7 @@
         bg();
         balls.forEach(b=>{
             const black=b.game.special?.state==='black';
-            ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,b.game.hits,b.angle,black);
+            ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,b.game.hits,b.angle,black,b.game.special?.state==='pending');
             drawSpecialOverlay(b);
         });
         for(const p of particles){ctx.globalAlpha=clamp(p.life/42,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size)}
@@ -769,11 +774,12 @@
         if(mode!=='playing'||dropPointer!==null)return;
         e.preventDefault();dropPointer=e.pointerId;
         ui.dropLane.setPointerCapture(e.pointerId);
-        pointerX=laneX(e);audio.start();
+        pointerX=laneX(e);ui.dropCursor.style.left=(pointerX/W*100)+'%';audio.start();
     });
     ui.dropLane.addEventListener('pointermove',e=>{
         if(e.pointerId!==dropPointer)return;
         e.preventDefault();pointerX=laneX(e);
+        ui.dropCursor.style.left=(pointerX/W*100)+'%';
     });
     function laneRelease(e,canceled=false) {
         if(e.pointerId!==dropPointer)return;
@@ -788,6 +794,7 @@
         if(mode!=='playing')return;
         if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
             e.preventDefault();pointerX=clamp(pointerX+(e.key==='ArrowLeft'?-15:15),0,W);
+            ui.dropCursor.style.left=(pointerX/W*100)+'%';
         }else if(e.key===' '||e.key==='Enter'){
             e.preventDefault();audio.start();drop();
         }
@@ -800,8 +807,8 @@
         if(mode==='playing'){hit(x,y);return}
         if(mode==='throw'){
             // 投げ中も成立待ち玉なら連打を優先する。
+            if(pick(x,y,true)){hit(x,y);return}
             const b=pick(x,y);
-            if(b?.game.special?.state==='pending'){hit(x,y);return}
             if(b){
                 dragged=b;Body.setStatic(b,true);Body.setVelocity(b,{x:0,y:0});
                 Body.setPosition(b,{x:clamp(x,LEFT+b.circleRadius,RIGHT-b.circleRadius),
