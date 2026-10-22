@@ -10,6 +10,8 @@
         strikeInfo: $('strikeInfo'), throwInfo: $('throwInfo'),
         strike: $('strikeBtn'), throw: $('throwBtn'),
         hint: $('hint'), overlay: $('overlay'), panel: $('overlayPanel'),
+        rushPanel:$('rushPanel'), finalPanel:$('finalPanel'), finalFill:$('finalFill'),
+        finalTime:$('finalTime'), finalKilled:$('finalKilled'),
         alert: $('alert'), sound: $('soundBtn'), voice: $('voiceBtn')
     };
     if (!M) {
@@ -22,6 +24,15 @@
     const STRIKE_TIME=10000, THROW_TIME=10000, RUSH_COUNTDOWN=3000, RUSH_END_PAUSE=1100;
     const RUSH_MIN=30, RUSH_MIN_TIME=3000, FULL_DAMAGE=1.25;
     const STRIKE_CHARGE_MULTIPLIER=.125, THROW_CHARGE_MULTIPLIER=2;
+    // 最終戦：24 + 2×12 + 8×6 + 32×1 = 128発、全43体
+    const FINAL_STAGES=[
+        {name:'大道塾',hp:24,r:96,children:2,bonus:8000},
+        {name:'中道塾',hp:12,r:55,children:4,bonus:3000},
+        {name:'小道塾',hp:6,r:29,children:4,bonus:1200},
+        {name:'ミニ道塾',hp:1,r:14,children:0,bonus:350}
+    ];
+    const FINAL_MAX_TIME=30000, FINAL_INTRO_TIME=2400;
+    const FINAL_PREVIEW=/(?:^|&)final=1(?:&|$)/.test((location.search||'').replace(/^\?/,''));
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -59,6 +70,7 @@
     let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let rushReadyQueue=[];
+    let finalIntroLeft=0, finalTimeLeft=FINAL_MAX_TIME, finalKills=0, finalHitMarks=[];
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
     ui.best.textContent=best.toLocaleString('ja-JP');
@@ -391,6 +403,149 @@
         b.game.alive=false;
         const i=balls.indexOf(b);if(i>=0)balls.splice(i,1);
         Composite.remove(engine.world,b);
+    }
+
+    // 最終戦は通常の合体・黒玉・ラッシュから独立した専用ボディ。
+    function spawnFinalBall(stage,x,y,velocity){
+        const def=FINAL_STAGES[stage],radius=def.r;
+        const b=Bodies.circle(clamp(x,LEFT+radius,RIGHT-radius),clamp(y,radius+12,FLOOR-radius-1),radius,{
+            restitution:.94,friction:0,frictionStatic:0,frictionAir:.001,density:.0006,slop:.025
+        });
+        b.game={finalStage:stage,hp:def.hp,alive:true,born:currentTime,flash:0,hits:0};
+        Body.setVelocity(b,velocity||{x:1.2,y:-.6});
+        balls.push(b);Composite.add(engine.world,b);
+        return b;
+    }
+    function updateFinalHud(){
+        ui.finalTime.textContent=(finalTimeLeft/1000).toFixed(1)+'秒';
+        ui.finalFill.style.width=(100*finalTimeLeft/FINAL_MAX_TIME)+'%';
+        ui.finalKilled.textContent='撃破 '+finalKills+'/43';
+        ui.finalPanel.classList.toggle('urgent',finalTimeLeft<=7000);
+    }
+    function showFinalHud(active){
+        ui.rushPanel.style.display=active?'none':'';
+        ui.finalPanel.style.display=active?'':'none';
+        if(active){
+            ui.next.textContent='拳';ui.next.style.background='#c75b3d';ui.next.style.fontSize='15px';
+            updateFinalHud();
+        }
+    }
+    function beginFinalBattle(){
+        if(mode!=='playing')return;
+        const old=[...balls];
+        for(const b of old){
+            sparkle(b.position.x,b.position.y,'#fff2cc',8);
+            impactSpark(b.position.x,b.position.y,4,'hit');
+            removeBall(b);
+        }
+        if(pointer!==null&&canvas.hasPointerCapture(pointer))canvas.releasePointerCapture(pointer);
+        pointer=null;dragged=null;pending=[];activePlacements=[];dangerSince=null;
+        clearNotice();
+        engine.gravity.y=0;
+        Composite.add(engine.world,Bodies.rectangle(W/2,0,W+70,20,{
+            isStatic:true,restitution:.98,friction:0
+        }));
+        finalIntroLeft=FINAL_INTRO_TIME;
+        finalTimeLeft=FINAL_MAX_TIME;finalKills=0;finalHitMarks=[];
+        spawnFinalBall(0,W/2,H*.53,{x:1.1,y:-.65});
+        mode='final-intro';showFinalHud(true);updateHud();
+        hint('最終戦！ 玉を叩いて全滅させろ！');
+        audio.fx('rush');speak('最終戦！ 始め！',true);
+    }
+    function hitFinal(x,y){
+        if(mode!=='final')return false;
+        const targets=balls.filter(b=>b.game.alive&&
+            Math.hypot(b.position.x-x,b.position.y-y)<=b.circleRadius+12);
+        if(!targets.length)return false;
+        targets.sort((a,b)=>Math.hypot(a.position.x-x,a.position.y-y)/
+            (a.circleRadius+12)-Math.hypot(b.position.x-x,b.position.y-y)/(b.circleRadius+12));
+        const b=targets[0],stage=b.game.finalStage,def=FINAL_STAGES[stage];
+        b.game.hp--;b.game.flash=9;
+        const dx=b.position.x-x,dy=b.position.y-y;
+        const angle=Math.hypot(dx,dy)>2?Math.atan2(dy,dx):Math.random()*Math.PI*2;
+        Body.setVelocity(b,{x:clamp(b.velocity.x*.55+Math.cos(angle)*1.55,-3.7,3.7),
+            y:clamp(b.velocity.y*.55+Math.sin(angle)*1.55,-3.7,3.7)});
+        impactSpark(x,y,stage>=2?2:5,'hit');audio.fx('hit',stage+2);
+        if(b.game.hp>0)return true;
+        const bx=b.position.x,by=b.position.y;
+        removeBall(b);finalKills++;
+        finalTimeLeft=Math.min(FINAL_MAX_TIME,finalTimeLeft+def.bonus);
+        points(100*(stage+1));
+        if(def.children){
+            const child=FINAL_STAGES[stage+1];
+            for(let i=0;i<def.children;i++){
+                const theta=def.children===2?i*Math.PI:Math.PI/4+i*2*Math.PI/def.children;
+                const distance=child.r*(def.children===2?1.35:1.5);
+                const speed=stage===0?2.5:stage===1?3:3.5;
+                spawnFinalBall(stage+1,bx+Math.cos(theta)*distance,
+                    by+Math.sin(theta)*distance,{x:Math.cos(theta)*speed,y:Math.sin(theta)*speed});
+            }
+            sparkle(bx,by,'#fff0b6',18);impactSpark(bx,by,6,'break');
+        }else{
+            sparkle(bx,by,'#fff3cc',16);impactSpark(bx,by,6,'break');
+            finalHitMarks.push({x:bx,y:by,life:400});
+            if(finalHitMarks.length>18)finalHitMarks.shift();
+        }
+        audio.fx('break',stage+2);
+        updateFinalHud();
+        if(!balls.length)end('win');
+        return true;
+    }
+    function drawFinalBall(b){
+        const stage=b.game.finalStage,def=FINAL_STAGES[stage],radius=b.circleRadius;
+        ctx.save();ctx.translate(b.position.x,b.position.y);
+        ctx.beginPath();ctx.arc(0,0,radius,0,Math.PI*2);
+        const gradient=ctx.createRadialGradient(-radius*.36,-radius*.4,radius*.1,0,0,radius);
+        gradient.addColorStop(0,b.game.flash?'#fff8d5':'#fdf0cf');
+        gradient.addColorStop(.48,stage===0?'#de8a60':stage===1?'#e1ba80':
+            stage===2?'#d2b7dd':'#b6e4e6');
+        gradient.addColorStop(1,stage===0?'#873930':stage===1?'#987044':
+            stage===2?'#745887':'#447a8c');
+        ctx.fillStyle=gradient;ctx.fill();
+        ctx.lineWidth=stage>=2?2:3;ctx.strokeStyle='#5e393b';ctx.stroke();
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#29202a';
+        ctx.font=(stage===3?10:stage===2?17:stage===1?27:39)+'px "Yuji Boku","Yu Mincho",serif';
+        ctx.fillText(stage===3?'ミニ':def.name,0,stage===3?0:-radius*.13,radius*1.8);
+        if(stage<3){
+            ctx.font='bold '+(stage===2?10:16)+'px system-ui';
+            ctx.fillStyle='#612125';ctx.fillText('残'+b.game.hp,0,radius*.46);
+        }
+        ctx.restore();
+    }
+    function drawFinalOverlay(){
+        ctx.save();
+        if(mode==='final'||mode==='final-intro'){
+            const ratio=clamp(finalTimeLeft/FINAL_MAX_TIME,0,1);
+            round(18,12,W-36,15,7);ctx.fillStyle='#171923';ctx.fill();
+            round(20,14,(W-40)*ratio,11,5);
+            ctx.fillStyle=ratio<.25?'#ed333d':'#efb552';ctx.fill();
+            ctx.fillStyle='#fff2d9';ctx.font='900 15px system-ui';ctx.textAlign='center';
+            ctx.fillText('残り '+(finalTimeLeft/1000).toFixed(1)+'秒',W/2,48);
+        }
+        for(const mark of finalHitMarks){
+            ctx.globalAlpha=clamp(mark.life/300,0,1);
+            ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.font='900 19px "Yuji Boku","Yu Mincho",serif';
+            ctx.lineWidth=4;ctx.strokeStyle='#552029';ctx.strokeText('バシュッ！',mark.x,mark.y);
+            ctx.fillStyle='#fff4d0';ctx.fillText('バシュッ！',mark.x,mark.y);
+        }
+        ctx.globalAlpha=1;
+        if(mode==='final-intro'||(mode==='ended'&&finalIntroLeft<0)){
+            ctx.fillStyle='rgba(8,8,16,.72)';ctx.fillRect(0,0,W,H);
+            ctx.textAlign='center';ctx.textBaseline='middle';
+            const result=mode==='ended';
+            const line=result?(finalIntroLeft===-1500?'免許皆伝！！':'時間切れ！'):
+                finalIntroLeft>FINAL_INTRO_TIME/2?'最終戦':'連打ぁ！！';
+            ctx.lineWidth=8;ctx.lineJoin='round';
+            ctx.font=(result?'bold 49px':'900 70px')+' "Yuji Boku","Yu Mincho",serif';
+            ctx.strokeStyle='#52212d';ctx.strokeText(line,W/2,H*.45,W-36);
+            ctx.fillStyle='#f4ca78';ctx.fillText(line,W/2,H*.45,W-36);
+            if(!result){
+                ctx.font='bold 23px "Yuji Boku","Yu Mincho",serif';
+                ctx.fillStyle='#fff2d7';ctx.fillText('叩けぇ！',W/2,H*.61);
+            }
+        }
+        ctx.restore();
     }
     function impactSpark(x,y,level,kind='merge') {
         const maxLife=kind==='merge'?(level>=4?20:16):11;
