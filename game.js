@@ -70,7 +70,7 @@
     let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let rushReadyQueue=[];
-    let finalIntroLeft=0, finalTimeLeft=FINAL_MAX_TIME, finalKills=0, finalHitMarks=[];
+    let finalIntroLeft=0, finalTimeLeft=FINAL_MAX_TIME, finalKills=0, finalHitMarks=[], finalGameActive=false;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
     ui.best.textContent=best.toLocaleString('ja-JP');
@@ -380,6 +380,7 @@
             strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge,STRIKE_TIME)+'秒':'30%で解禁';
         ui.throwInfo.textContent=throwFull?'10秒・黒玉全消去':
             throwGauge>=RUSH_MIN?rushSeconds(throwGauge,THROW_TIME)+'秒':'30%で解禁';
+        if(mode==='final'||mode==='final-intro')updateFinalHud();
     }
     function updateNext() {
         const d=TIERS[nextLevel];
@@ -445,7 +446,7 @@
         Composite.add(engine.world,Bodies.rectangle(W/2,0,W+70,20,{
             isStatic:true,restitution:.98,friction:0
         }));
-        finalIntroLeft=FINAL_INTRO_TIME;
+        finalGameActive=true;finalIntroLeft=FINAL_INTRO_TIME;
         finalTimeLeft=FINAL_MAX_TIME;finalKills=0;finalHitMarks=[];
         spawnFinalBall(0,W/2,H*.53,{x:1.1,y:-.65});
         mode='final-intro';showFinalHud(true);updateHud();
@@ -647,7 +648,10 @@
             if(!successor?.game.special)points(TIERS[lv].points);
             sparkle(x,y,TIERS[lv].fill,14+lv*2);impactSpark(x,y,lv,'merge');audio.fx('merge',lv);
             if(lv>=2)shake=Math.max(shake,lv>=5?7:lv>=3?4:1.6);
-            if(lv===TIERS.length-1)notify('完全制覇！！',900);
+            if(successor?.game.level===TIERS.length-1){
+                beginFinalBattle();
+                break;
+            }
         }
     }
     function reset() {
@@ -658,9 +662,11 @@
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;dropBlockedUntil=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
         rushEndPauseMs=0;rushEndKind=null;
+        finalIntroLeft=0;finalTimeLeft=FINAL_MAX_TIME;finalKills=0;finalHitMarks=[];finalGameActive=false;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
-        updateNext();updateHud();hint('盤面をタップして落下／成立待ち玉は連打');
+        showFinalHud(false);updateNext();updateHud();hint('盤面をタップして落下／成立待ち玉は連打');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
+        if(FINAL_PREVIEW)beginFinalBattle();
     }
     function drop() {
         if(mode!=='playing'||rushEndPauseMs>0||currentTime<dropBlockedUntil||!dropReady||currentTime-lastDrop<DROP_COOLDOWN)return;
@@ -797,8 +803,28 @@
         }
         updateHud();return true;
     }
-    function end() {
+    function end(finalOutcome=null) {
         if(mode==='ended')return;
+        if(finalOutcome){
+            clearNotice();mode='ended';updateHud();
+            const victory=finalOutcome==='win';
+            audio.fx(victory?'break':'end');
+            speak(victory?'一本！':'そこまで！',true);
+            ui.panel.innerHTML='<div class="panel-kicker">最終戦・'+(victory?'完全制覇':'時間切れ')+'</div>'+
+                '<h1 class="result-headline">'+(victory?'免許皆伝！！':'時間切れ！')+'</h1>'+
+                '<div class="result">得点 <strong>'+score.toLocaleString('ja-JP')+
+                '</strong><span class="result-small">'+(victory?'大道塾藝夢 完全制覇':'最終戦 敗北')+'</span>'+
+                '<b>'+(victory?'免許皆伝':'再挑戦！')+'</b></div>'+
+                '<button id="retryBtn" class="primary-btn">もう一本！ 始め！！</button>'+
+                '<button id="shareBtn" class="share-btn">結果をLINEなどで共有</button>';
+            $('retryBtn').addEventListener('click',reset);
+            $('shareBtn').addEventListener('click',()=>share(victory?'免許皆伝':'最終戦 敗北'));
+            finalIntroLeft=victory?-1500:-900;
+            setTimeout(()=>{if(mode==='ended'&&finalGameActive){
+                finalIntroLeft=0;ui.overlay.classList.remove('hidden');
+            }},1450);
+            return;
+        }
         mode='ended';updateHud();audio.fx('end');speak('そこまで！',true);notify('そこまで！！',1350);
         const rank=score>=25000?'塾長級':score>=14000?'五段':score>=8000?'三段':
             score>=5000?'初段':score>=2500?'一級':score>=1000?'五級':'十級';
@@ -839,6 +865,30 @@
         if(currentTime-dangerSince>=DANGER_GRACE)end();
     }
     function step(dt) {
+        if(mode==='final-intro'){
+            finalIntroLeft=Math.max(0,finalIntroLeft-dt);
+            if(finalIntroLeft===0){
+                mode='final';hint('叩けぇ！ 分裂した玉も全滅させろ！');updateHud();
+            }
+            return;
+        }
+        if(mode==='final'){
+            currentTime+=dt;
+            finalTimeLeft=Math.max(0,finalTimeLeft-dt);
+            Engine.update(engine,dt);
+            for(const b of balls){
+                const vel=b.velocity,speed=Math.hypot(vel.x,vel.y);
+                if(speed<.75){
+                    const angle=Math.atan2(b.position.y-H/2,b.position.x-W/2)+.5;
+                    Body.setVelocity(b,{x:Math.cos(angle)*1.15,y:Math.sin(angle)*1.15});
+                }
+                if(b.game.flash>0)b.game.flash--;
+            }
+            for(const mark of finalHitMarks)mark.life-=dt;
+            finalHitMarks=finalHitMarks.filter(mark=>mark.life>0);
+            if(finalTimeLeft<=0)end('lose');
+            else updateFinalHud();
+        }
         if(rushEndPauseMs>0){
             // 終了宣告だけが動く専用の時計。ゲーム時計は停止し、
             // 物理・技タイマー・危険ライン・設置判定・粒子更新も一切しない。
@@ -888,11 +938,13 @@
             ctx.drawImage(scenery,0,0,W,H);
             ctx.fillStyle='rgba(12,10,18,.34)';ctx.fillRect(0,0,W,H);
         }
-        ctx.fillStyle='#bb222d26';ctx.fillRect(0,0,W,DANGER);
-        ctx.setLineDash([9,7]);ctx.lineWidth=2.3;ctx.strokeStyle='#ffccaa';
-        ctx.beginPath();ctx.moveTo(0,DANGER);ctx.lineTo(W,DANGER);ctx.stroke();ctx.setLineDash([]);
-        round(9,DANGER+7,79,21,4);ctx.fillStyle='#6b1b2ae8';ctx.fill();
-        ctx.fillStyle='#fff1dd';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.fillText('危険ライン',48,DANGER+22);
+        if(!finalGameActive){
+            ctx.fillStyle='#bb222d26';ctx.fillRect(0,0,W,DANGER);
+            ctx.setLineDash([9,7]);ctx.lineWidth=2.3;ctx.strokeStyle='#ffccaa';
+            ctx.beginPath();ctx.moveTo(0,DANGER);ctx.lineTo(W,DANGER);ctx.stroke();ctx.setLineDash([]);
+            round(9,DANGER+7,79,21,4);ctx.fillStyle='#6b1b2ae8';ctx.fill();
+            ctx.fillStyle='#fff1dd';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.fillText('危険ライン',48,DANGER+22);
+        }
         ctx.fillStyle='#2b2526b8';ctx.fillRect(0,FLOOR,W,H-FLOOR);
     }
     function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false,warningAlpha=0) {
@@ -1099,6 +1151,7 @@
         ctx.save();if(rushEndPauseMs===0&&shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
         bg();
         balls.forEach(b=>{
+            if(b.game.finalStage!==undefined){drawFinalBall(b);return}
             const black=b.game.special?.state==='black';
             ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,Math.ceil(b.game.hits),b.angle,black,b.game.special?.state==='pending',specialWarningAlpha(b));
             drawSpecialOverlay(b);
@@ -1146,6 +1199,7 @@
             ctx.fillText('危険！ 残り '+Math.ceil((DANGER_GRACE-(currentTime-dangerSince))/1000)+' 秒',W/2,19);
         }
         ctx.restore();
+        if(finalGameActive)drawFinalOverlay();
         drawRushEnd();
     }
     function resize() {
@@ -1164,11 +1218,12 @@
     // pointerdownで打撃／落下を確定し、落下だけpointerupで発動する。
     // これにより素早い連打でも技へのタップが誤投下にならない。
     canvas.addEventListener('pointerdown',e=>{
-        if(!['playing','strike','throw'].includes(mode))return;
+        if(!['playing','strike','throw','final'].includes(mode))return;
         e.preventDefault();
         if(rushEndPauseMs>0)return;
         audio.start();
         const {x,y}=coord(e);
+        if(mode==='final'){hitFinal(x,y);return}
         if(mode==='strike'){hit(x,y);return}
         if(mode==='playing') {
             if(hit(x,y))return;
@@ -1216,6 +1271,12 @@
     canvas.addEventListener('pointercancel',e=>release(e,true));
     canvas.addEventListener('lostpointercapture',e=>{if(e.pointerId===pointer)release(e,true)});
     canvas.addEventListener('keydown',e=>{
+        if(mode==='final'){
+            if(e.key==='Enter'||e.key===' '){
+                e.preventDefault();hitFinal(W/2,H/2);
+            }
+            return;
+        }
         if(mode!=='playing'||rushEndPauseMs>0)return;
         if(e.key==='ArrowLeft'||e.key==='ArrowRight') {
             e.preventDefault();
