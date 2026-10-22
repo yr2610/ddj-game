@@ -256,9 +256,23 @@
         rushReadyQueue.push(type);
         if(!alertTimer)showNextRushReady();
     }
+    // ラッシュ解禁宣告は文字列が長いため、フィールドの実表示幅で収める。
+    // 登場アニメーションは最大1.34倍になるので、その拡大時も左右に余白を確保。
+    function fitRushReadyNotice(){
+        const fieldWidth=canvas.getBoundingClientRect().width||W;
+        const baseSize=Math.min(32,Math.max(12,fieldWidth*.088));
+        ui.alert.style.fontSize=baseSize.toFixed(1)+'px';
+        const textWidth=ui.alert.scrollWidth||baseSize*[...ui.alert.textContent].length;
+        const allowedWidth=fieldWidth*.68;
+        if(textWidth>allowedWidth)
+            ui.alert.style.fontSize=(baseSize*allowedWidth/textWidth).toFixed(1)+'px';
+    }
     function notify(s,ms=850) {
         if(alertTimer){clearTimeout(alertTimer);alertTimer=null}
-        ui.alert.textContent=s;ui.alert.classList.add('active');
+        ui.alert.textContent=s;
+        ui.alert.style.fontSize='';
+        if(/^(打撃|投げ)ラッシュOK！$/.test(s))fitRushReadyNotice();
+        ui.alert.classList.add('active');
         alertTimer=setTimeout(()=>{
             ui.alert.classList.remove('active');
             alertTimer=null;
@@ -983,6 +997,9 @@
         const d=Math.min(window.devicePixelRatio||1,2.5);
         canvas.width=Math.round(W*d);canvas.height=Math.round(H*d);
         ctx.setTransform(d,0,0,d,0,0);
+        // 画面回転やウィンドウサイズ変更時もラッシュOKの幅を再計算。
+        if(/^(打撃|投げ)ラッシュOK！$/.test(ui.alert.textContent))
+            fitRushReadyNotice();
     }
     function coord(e){
         const r=canvas.getBoundingClientRect();
