@@ -26,10 +26,10 @@
     const STRIKE_CHARGE_MULTIPLIER=.125, THROW_CHARGE_MULTIPLIER=2;
     // 最終戦：24 + 2×12 + 8×6 + 32×1 = 128発、全43体
     const FINAL_STAGES=[
-        {name:'大道塾',hp:24,r:96,children:2,bonus:8000},
-        {name:'中道塾',hp:12,r:55,children:4,bonus:3000},
-        {name:'小道塾',hp:6,r:29,children:4,bonus:1200},
-        {name:'ミニ道塾',hp:1,r:14,children:0,bonus:350}
+        {name:'大道塾',hp:24,r:100,children:2,bonus:8000},
+        {name:'中道塾',hp:12,r:60,children:4,bonus:3000},
+        {name:'小道塾',hp:6,r:33,children:4,bonus:1200},
+        {name:'ミニ道塾',hp:1,r:18,children:0,bonus:350}
     ];
     const FINAL_MAX_TIME=30000, FINAL_INTRO_TIME=2400;
     const FINAL_PREVIEW=/(?:^|&)final=1(?:&|$)/.test((location.search||'').replace(/^\?/,''));
@@ -175,6 +175,14 @@
             if(name==='merge')this.impact(level,'merge');
             if(name==='hit')this.impact(level,'hit');
             if(name==='break')this.impact(level,'break');
+            if(name==='split'){
+                // ミニ破壊音より太く長い、二段に割れる格闘ヒット音。
+                this.impact(Math.max(level,5),'break');
+                this.burst(t+.012,.105,1450,.43,'bandpass');
+                this.burst(t+.03,.16,560,.48,'lowpass');
+                this.tone(225,.18,'sawtooth',.17,t+.01,55,.002);
+                this.tone(385,.072,'square',.075,t+.024,150,.001);
+            }
             if(name==='rush')[0,.1,.2].forEach((d,i)=>this.tone(300+i*120,.24,'sawtooth',.07,t+d));
             if(name==='end')[0,.17,.34].forEach((d,i)=>this.tone(320-i*60,.32,'triangle',.15,t+d));
         },
@@ -410,10 +418,13 @@
     function spawnFinalBall(stage,x,y,velocity){
         const def=FINAL_STAGES[stage],radius=def.r;
         const b=Bodies.circle(clamp(x,LEFT+radius,RIGHT-radius),clamp(y,radius+12,FLOOR-radius-1),radius,{
-            restitution:.94,friction:0,frictionStatic:0,frictionAir:.001,density:.0006,slop:.025
+            // 壁・玉の接触で角速度が付くよう摩擦を有効化。
+            restitution:.94,friction:.075,frictionStatic:.085,frictionAir:.001,density:.0006,slop:.025
         });
         b.game={finalStage:stage,hp:def.hp,alive:true,born:currentTime,flash:0,hits:0};
         Body.setVelocity(b,velocity||{x:1.2,y:-.6});
+        // 分裂直後から少し回り、衝突や打撃でも回転が変化する。
+        Body.setAngularVelocity(b,(Math.random()-.5)*(stage>=2?.032:.022));
         balls.push(b);Composite.add(engine.world,b);
         return b;
     }
@@ -448,7 +459,7 @@
         }));
         finalGameActive=true;finalIntroLeft=FINAL_INTRO_TIME;
         finalTimeLeft=FINAL_MAX_TIME;finalKills=0;finalHitMarks=[];
-        spawnFinalBall(0,W/2,H*.53,{x:1.1,y:-.65});
+        spawnFinalBall(0,W/2,H*.53,{x:1.55,y:-.82});
         mode='final-intro';showFinalHud(true);updateHud();
         hint('最終戦！ 玉を叩いて全滅させろ！');
         audio.fx('rush');speak('最終戦！ 始め！',true);
@@ -464,8 +475,25 @@
         b.game.hp--;b.game.flash=9;
         const dx=b.position.x-x,dy=b.position.y-y;
         const angle=Math.hypot(dx,dy)>2?Math.atan2(dy,dx):Math.random()*Math.PI*2;
-        Body.setVelocity(b,{x:clamp(b.velocity.x*.55+Math.cos(angle)*1.55,-3.7,3.7),
-            y:clamp(b.velocity.y*.55+Math.sin(angle)*1.55,-3.7,3.7)});
+        const push=stage===0?1.85:stage===1?1.7:1.55;
+        const speedLimit=stage===0?4.1:stage===1?3.9:3.7;
+        let nx=b.velocity.x*.55+Math.cos(angle)*push;
+        let ny=b.velocity.y*.55+Math.sin(angle)*push;
+        // 大玉が壁・天井・床へ押し付けられた場合は押し戻し、
+        // コーナーで同じ場所を叩き続けられる状況を減らす。
+        if(stage<=1){
+            const margin=b.circleRadius+15;
+            if((b.position.x<=LEFT+margin&&nx<0)||
+               (b.position.x>=RIGHT-margin&&nx>0))nx=-nx*.9;
+            if((b.position.y<=margin&&ny<0)||
+               (b.position.y>=FLOOR-margin&&ny>0))ny=-ny*.9;
+        }
+        Body.setVelocity(b,{x:clamp(nx,-speedLimit,speedLimit),
+            y:clamp(ny,-speedLimit,speedLimit)});
+        const off=(x-b.position.x)/b.circleRadius;
+        const spinKick=Math.abs(off)>.08?off*.022:(Math.random()<.5?-.009:.009);
+        const spinMax=stage<=1?.035:.045;
+        Body.setAngularVelocity(b,clamp((b.angularVelocity||0)*.75+spinKick,-spinMax,spinMax));
         impactSpark(x,y,stage>=2?2:5,'hit');audio.fx('hit',stage+2);
         if(b.game.hp>0)return true;
         const bx=b.position.x,by=b.position.y;
@@ -477,17 +505,22 @@
             for(let i=0;i<def.children;i++){
                 const theta=def.children===2?i*Math.PI:Math.PI/4+i*2*Math.PI/def.children;
                 const distance=child.r*(def.children===2?1.35:1.5);
-                const speed=stage===0?2.5:stage===1?3:3.5;
+                const speed=stage===0?2.9:stage===1?3:3.5;
                 spawnFinalBall(stage+1,bx+Math.cos(theta)*distance,
                     by+Math.sin(theta)*distance,{x:Math.cos(theta)*speed,y:Math.sin(theta)*speed});
             }
-            sparkle(bx,by,'#fff0b6',18);impactSpark(bx,by,6,'break');
+            // 分裂はミニ消滅より格段に大きなスパーク＋二段打撃音。
+            sparkle(bx,by,'#fff0b6',stage===0?42:stage===1?32:24);
+            impactSpark(bx,by,6-stage,'split');
+            shake=Math.max(shake,stage===0?9:stage===1?6:4);
+            finalHitMarks.push({x:bx,y:by,life:520,text:'バキィン！！',strong:true});
+            audio.fx('split',6-stage);
         }else{
             sparkle(bx,by,'#fff3cc',16);impactSpark(bx,by,6,'break');
-            finalHitMarks.push({x:bx,y:by,life:400});
-            if(finalHitMarks.length>18)finalHitMarks.shift();
+            finalHitMarks.push({x:bx,y:by,life:400,text:'バシュッ！',strong:false});
+            audio.fx('break',stage+2);
         }
-        audio.fx('break',stage+2);
+        if(finalHitMarks.length>18)finalHitMarks.splice(0,finalHitMarks.length-18);
         updateFinalHud();
         if(!balls.length)end('win');
         return true;
@@ -495,6 +528,11 @@
     function drawFinalBall(b){
         const stage=b.game.finalStage,def=FINAL_STAGES[stage],radius=b.circleRadius;
         ctx.save();ctx.translate(b.position.x,b.position.y);
+        // 開始演出は大道塾が一瞬膨張。物理半径・当たり判定は変更しない。
+        const intro=clamp((FINAL_INTRO_TIME-finalIntroLeft)/FINAL_INTRO_TIME,0,1);
+        if(mode==='final-intro'&&stage===0)ctx.scale(1+.16*Math.sin(Math.PI*intro),1+.16*Math.sin(Math.PI*intro));
+        // 通常のボールと同様、玉の回転角へ筆文字も追従させる。
+        ctx.rotate(b.angle);
         ctx.beginPath();ctx.arc(0,0,radius,0,Math.PI*2);
         const gradient=ctx.createRadialGradient(-radius*.36,-radius*.4,radius*.1,0,0,radius);
         gradient.addColorStop(0,b.game.flash?'#fff8d5':'#fdf0cf');
@@ -508,9 +546,15 @@
         // ボスの大道塾はサイズに見合う大きな筆文字。中道塾も少し拡大。
         // 円から文字がはみ出さないよう横幅には従来の上限を適用。
         const finalNameSize=stage===0?Math.min(radius*.62,65):
-            stage===1?Math.min(radius*.6,36):stage===2?17:10;
+            stage===1?Math.min(radius*.6,40):stage===2?20:12;
         ctx.font=finalNameSize+'px "Yuji Boku","Yu Mincho",serif';
-        ctx.fillText(stage===3?'ミニ':def.name,0,stage===3?0:-radius*.13,radius*1.8);
+        if(stage===3){
+            // 小さな玉でも名前が分かるよう、「ミニ道塾」を二段組で全文表示。
+            ctx.fillText('ミニ',0,-radius*.33,radius*1.72);
+            ctx.fillText('道塾',0,radius*.36,radius*1.72);
+        }else{
+            ctx.fillText(def.name,0,-radius*.13,radius*1.8);
+        }
         if(stage<3){
             ctx.font='bold '+(stage===2?10:16)+'px system-ui';
             ctx.fillStyle='#612125';ctx.fillText('残'+b.game.hp,0,radius*.46);
@@ -530,13 +574,15 @@
         for(const mark of finalHitMarks){
             ctx.globalAlpha=clamp(mark.life/300,0,1);
             ctx.textAlign='center';ctx.textBaseline='middle';
-            ctx.font='900 19px "Yuji Boku","Yu Mincho",serif';
-            ctx.lineWidth=4;ctx.strokeStyle='#552029';ctx.strokeText('バシュッ！',mark.x,mark.y);
-            ctx.fillStyle='#fff4d0';ctx.fillText('バシュッ！',mark.x,mark.y);
+            ctx.font='900 '+(mark.strong?25:19)+'px "Yuji Boku","Yu Mincho",serif';
+            ctx.lineWidth=mark.strong?6:4;
+            ctx.strokeStyle='#552029';ctx.strokeText(mark.text,mark.x,mark.y,W-30);
+            ctx.fillStyle='#fff4d0';ctx.fillText(mark.text,mark.x,mark.y,W-30);
         }
         ctx.globalAlpha=1;
         if(mode==='final-intro'||(mode==='ended'&&finalIntroLeft<0)){
-            ctx.fillStyle='rgba(8,8,16,.72)';ctx.fillRect(0,0,W,H);
+            ctx.fillStyle=mode==='final-intro'?'rgba(8,8,16,.48)':'rgba(8,8,16,.72)';
+            ctx.fillRect(0,0,W,H);
             ctx.textAlign='center';ctx.textBaseline='middle';
             const result=mode==='ended';
             const line=result?(finalIntroLeft===-1500?'免許皆伝！！':'時間切れ！'):
@@ -553,7 +599,7 @@
         ctx.restore();
     }
     function impactSpark(x,y,level,kind='merge') {
-        const maxLife=kind==='merge'?(level>=4?20:16):11;
+        const maxLife=kind==='split'?25:kind==='merge'?(level>=4?20:16):11;
         impacts.push({x,y,level,kind,life:maxLife,maxLife,angle:Math.random()*Math.PI*2});
         if(impacts.length>32)impacts.splice(0,impacts.length-32);
     }
@@ -882,10 +928,16 @@
             Engine.update(engine,dt);
             for(const b of balls){
                 const vel=b.velocity,speed=Math.hypot(vel.x,vel.y);
-                if(speed<.75){
+                const stage=b.game.finalStage;
+                const minSpeed=stage===0?1.25:stage===1?1.4:.75;
+                if(speed<minSpeed){
                     const angle=Math.atan2(b.position.y-H/2,b.position.x-W/2)+.5;
-                    Body.setVelocity(b,{x:Math.cos(angle)*1.15,y:Math.sin(angle)*1.15});
+                    const restored=stage===0?1.55:stage===1?1.8:1.15;
+                    Body.setVelocity(b,{x:Math.cos(angle)*restored,y:Math.sin(angle)*restored});
                 }
+                const maxSpin=stage<=1?.035:.045;
+                if(Math.abs(b.angularVelocity)>maxSpin)
+                    Body.setAngularVelocity(b,clamp(b.angularVelocity,-maxSpin,maxSpin));
                 if(b.game.flash>0)b.game.flash--;
             }
             for(const mark of finalHitMarks)mark.life-=dt;
@@ -991,7 +1043,8 @@
     function drawImpact(p) {
         const t=1-p.life/p.maxLife;
         const major=p.kind==='break'||p.level>=4;
-        const size=(p.kind==='hit'?22:major?40:30)*(.91+t*.31);
+        const size=(p.kind==='split'?(p.level>=5?78:65):
+            p.kind==='hit'?22:major?40:30)*(.91+t*.31);
         const alpha=clamp(p.life/6,0,1)*(t<.12?.65+t/.12*.35:1);
         const lengths=[1.25,.61,.98,.67,1.16,.55,.94,.7];
         ctx.save();ctx.translate(p.x,p.y);
@@ -1038,6 +1091,13 @@
             if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
         }
         ctx.closePath();ctx.fill();
+        if(p.kind==='split'){
+            // 一瞬広がる衝撃波の輪。炎・煙ではなく純粋な打撃スパーク。
+            ctx.globalAlpha=alpha*.84;
+            ctx.lineWidth=7*(1-t)+1.5;
+            ctx.strokeStyle='#fff0b5';
+            ctx.beginPath();ctx.arc(0,0,size*(.3+.64*t),0,Math.PI*2);ctx.stroke();
+        }
         ctx.globalCompositeOperation='source-over';
         ctx.restore();
     }
