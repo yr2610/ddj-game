@@ -1044,6 +1044,8 @@
         // 大玉ほど筆文字がしっかり主張するように拡大。
         // 空道は2字、大道塾は3字なので、文字数に応じて高さを調整する。
         const nameSize=pending?Math.min(r*.7,32):
+            lv===3?Math.min(r*1.3,52):    // 投：直径80pxの玉に合わせて50→52px
+            lv===5?Math.min(r*1.125,72): // 極：直径128pxの玉に合わせて72px
             lv===7?Math.min(r*.85,82):
             lv===8?Math.min(r*.60,72):Math.min(r*1.20,40);
         ctx.font=nameSize+'px "Yuji Boku","Yu Mincho",serif';
