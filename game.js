@@ -473,7 +473,6 @@
     function startStrike() {
         if(mode!=='playing'||strikeGauge<RUSH_MIN||!balls.length)return;
         const charge=strikeGauge;
-        strikeDamage=charge>=100?FULL_DAMAGE:1;
         strikeGauge=0;
         resetRushDamage(); // 必ず満タンから開始
         strikeDamage=charge>=100?FULL_DAMAGE:1;
