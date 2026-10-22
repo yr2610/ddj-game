@@ -19,8 +19,9 @@
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
     const W = 360, H = 525, FLOOR = 515, LEFT = 11, RIGHT = 349, DANGER = 96, SPAWN = 48;
     const DROP_COOLDOWN=500, SPECIAL_RECOVERY=700, DANGER_GRACE=6600;
-    const STRIKE_TIME=9000, THROW_TIME=9000, RUSH_COUNTDOWN=3000;
-    const RUSH_MIN=50, RUSH_MIN_TIME=3000, FULL_DAMAGE=1.25;
+    const STRIKE_TIME=10000, THROW_TIME=10000, RUSH_COUNTDOWN=3000;
+    const RUSH_MIN=30, RUSH_MIN_TIME=3000, FULL_DAMAGE=1.25;
+    const STRIKE_CHARGE_MULTIPLIER=.25, THROW_CHARGE_MULTIPLIER=1.5;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -252,20 +253,20 @@
     function placementGauge(b) {
         const supportHeight=clamp((FLOOR-(b.position.y+b.circleRadius))/(FLOOR-DANGER),0,1);
         const sizeFactor=3+b.game.level*1.1;
-        return supportHeight*supportHeight*sizeFactor*1.4;
+        return supportHeight*supportHeight*sizeFactor*1.4*THROW_CHARGE_MULTIPLIER;
     }
     // 高さによる従来の蓄積は投げ専用。
     function addGauge(n) {throwGauge=clamp(throwGauge+n,0,100);updateHud()}
-    // 成立待ち玉への打撃だけで蓄積。遅くても少量、速いほど大きい。
-    // 新規の玉の初打は2.5%。その後の同じ玉への打撃間隔で判定する。
+    // 成立待ち玉への打撃だけで蓄積。速いほど増加し、獲得量は旧版の1/4。
+    // 基本値は初打2.5%、以降は同じ玉への打撃間隔で判定する。
     function chargeStrike(special){
         const elapsed=special.lastHitAt===null?null:currentTime-special.lastHitAt;
         special.lastHitAt=currentTime;
         const amount=elapsed===null?2.5:elapsed<=110?5:elapsed<=170?4.25:
             elapsed<=260?3.25:elapsed<=400?2.25:1.25;
-        strikeGauge=clamp(strikeGauge+amount,0,100);
+        strikeGauge=clamp(strikeGauge+amount*STRIKE_CHARGE_MULTIPLIER,0,100);
     }
-    // 50%=3秒、75%=6秒、100%=9秒。最後の3秒だけ中央カウントダウンする。
+    // 30%=3秒、50%=5秒、75%=7.5秒、100%=10秒。最後の3秒にカウントダウン。
     function rushDuration(charge,maxTime){
         return RUSH_MIN_TIME+(maxTime-RUSH_MIN_TIME)*clamp((charge-RUSH_MIN)/(100-RUSH_MIN),0,1);
     }
@@ -313,10 +314,10 @@
         ui.throwMeter.classList.toggle('full-charge',throwFull);
         ui.strike.disabled=mode!=='playing'||strikeGauge<RUSH_MIN||balls.length===0;
         ui.throw.disabled=mode!=='playing'||throwGauge<RUSH_MIN||balls.length===0;
-        ui.strikeInfo.textContent=strikeFull?'9秒・威力1.25倍':
-            strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge,STRIKE_TIME)+'秒':'50%で解禁';
-        ui.throwInfo.textContent=throwFull?'9秒・黒玉全消去':
-            throwGauge>=RUSH_MIN?rushSeconds(throwGauge,THROW_TIME)+'秒':'50%で解禁';
+        ui.strikeInfo.textContent=strikeFull?'10秒・威力1.25倍':
+            strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge,STRIKE_TIME)+'秒':'30%で解禁';
+        ui.throwInfo.textContent=throwFull?'10秒・黒玉全消去':
+            throwGauge>=RUSH_MIN?rushSeconds(throwGauge,THROW_TIME)+'秒':'30%で解禁';
     }
     function updateNext() {
         const d=TIERS[nextLevel];
@@ -502,7 +503,7 @@
         }
         audio.start();audio.fx('rush');speak('投げ！',true);
         notify(charge>=100?'黒玉一掃！！':'投げラッシュ！！',1200);
-        hint(charge>=100?'黒玉全消去！ 9秒間、何度でも玉を掴んで移動！':
+        hint(charge>=100?'黒玉全消去！ 10秒間、何度でも玉を掴んで移動！':
             '何度でも玉を掴んで移動！');updateHud();
     }
     function queueTouchingPairs() {
