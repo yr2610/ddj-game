@@ -5,8 +5,10 @@
     const canvas = $('arena'), ctx = canvas.getContext('2d'), M = window.Matter;
     const ui = {
         score: $('score'), best: $('best'), next: $('nextBall'),
-        rushFill: $('rushFill'), rushPct: $('rushPct'), rushMeter: $('rushMeter'),
-        rushText: $('rushText'), strike: $('strikeBtn'), throw: $('throwBtn'),
+        strikeFill: $('strikeFill'), strikePct: $('strikePct'), strikeMeter: $('strikeMeter'),
+        throwFill: $('throwFill'), throwPct: $('throwPct'), throwMeter: $('throwMeter'),
+        strikeInfo: $('strikeInfo'), throwInfo: $('throwInfo'),
+        strike: $('strikeBtn'), throw: $('throwBtn'),
         hint: $('hint'), overlay: $('overlay'), panel: $('overlayPanel'),
         alert: $('alert'), sound: $('soundBtn'), voice: $('voiceBtn')
     };
@@ -18,6 +20,7 @@
     const W = 360, H = 525, FLOOR = 515, LEFT = 11, RIGHT = 349, DANGER = 96, SPAWN = 48;
     const DROP_COOLDOWN=500, SPECIAL_RECOVERY=700, DANGER_GRACE=6600;
     const STRIKE_TIME=6000, THROW_TIME=6000, RUSH_COUNTDOWN=3000;
+    const RUSH_MIN=30, FULL_DAMAGE=1.25;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -49,7 +52,7 @@
     const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
     let engine, balls=[], pending=[], particles=[], impacts=[];
-    let mode='menu', score=0, best=0, gauge=0, nextLevel=0, pointerX=180;
+    let mode='menu', score=0, best=0, throwGauge=0, strikeGauge=0, strikeDamage=1, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dropBlockedUntil=0, dangerSince=null, strikeEnds=0, throwEnds=0;
     let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
@@ -251,7 +254,18 @@
         const sizeFactor=3+b.game.level*1.1;
         return supportHeight*supportHeight*sizeFactor*1.4;
     }
-    function addGauge(n) {gauge=clamp(gauge+n,0,100);updateHud()}
+    // 高さによる従来の蓄積は投げ専用。
+    function addGauge(n) {throwGauge=clamp(throwGauge+n,0,100);updateHud()}
+    // 成立待ち玉への打撃だけで蓄積。遅くても少量、速いほど大きい。
+    // 新規の玉の初打は2.5%。その後の同じ玉への打撃間隔で判定する。
+    function chargeStrike(special){
+        const elapsed=special.lastHitAt===null?null:currentTime-special.lastHitAt;
+        special.lastHitAt=currentTime;
+        const amount=elapsed===null?2.5:elapsed<=110?5:elapsed<=170?4.25:
+            elapsed<=260?3.25:elapsed<=400?2.25:1.25;
+        strikeGauge=clamp(strikeGauge+amount,0,100);
+    }
+    function rushSeconds(charge){return (charge*.06).toFixed(1)}
     // 次球の解禁は経過時間だけで決定する。着地や物理速度に依存しない。
     function updateDropCooldown(){
         if(mode==='playing'&&!dropReady&&currentTime-lastDrop>=DROP_COOLDOWN){
@@ -284,14 +298,21 @@
         }
     }
     function updateHud() {
-        ui.rushPct.textContent=Math.floor(gauge)+'%';
-        ui.rushFill.style.width=gauge+'%';
-        ui.rushMeter.setAttribute('aria-valuenow',String(Math.floor(gauge)));
-        ui.strike.disabled=mode!=='playing'||gauge<50||balls.length===0;
-        ui.throw.disabled=mode!=='playing'||gauge<100||balls.length===0;
-        ui.rushText.textContent=mode==='strike'?'打撃ラッシュ中！':
-            mode==='throw'?'掴む玉を選べ！':gauge>=100?'打撃・投げ 解禁！':
-            gauge>=50?'打撃 解禁！':'気合い充填中';
+        const strikeFull=strikeGauge>=100, throwFull=throwGauge>=100;
+        ui.strikePct.textContent=Math.floor(strikeGauge)+'%';
+        ui.throwPct.textContent=Math.floor(throwGauge)+'%';
+        ui.strikeFill.style.width=strikeGauge+'%';
+        ui.throwFill.style.width=throwGauge+'%';
+        ui.strikeMeter.setAttribute('aria-valuenow',String(Math.floor(strikeGauge)));
+        ui.throwMeter.setAttribute('aria-valuenow',String(Math.floor(throwGauge)));
+        ui.strikeMeter.classList.toggle('full-charge',strikeFull);
+        ui.throwMeter.classList.toggle('full-charge',throwFull);
+        ui.strike.disabled=mode!=='playing'||strikeGauge<RUSH_MIN||balls.length===0;
+        ui.throw.disabled=mode!=='playing'||throwGauge<RUSH_MIN||balls.length===0;
+        ui.strikeInfo.textContent=strikeFull?'6秒・威力1.25倍':
+            strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge)+'秒':'30%で解禁';
+        ui.throwInfo.textContent=throwFull?'6秒・黒玉全消去':
+            throwGauge>=RUSH_MIN?rushSeconds(throwGauge)+'秒':'30%で解禁';
     }
     function updateNext() {
         const d=TIERS[nextLevel];
@@ -331,7 +352,7 @@
     }
     function enterSpecial(b,fromLevel) {
         const rule=SPECIAL[b.game.level];
-        b.game.special={state:'pending',fromLevel,remaining:rule.hits,expires:currentTime+SPECIAL_TIME};
+        b.game.special={state:'pending',fromLevel,remaining:rule.hits,expires:currentTime+SPECIAL_TIME,lastHitAt:null};
         b.game.hits=0;
         notify(TIERS[b.game.level].name+'を叩け！',800);
     }
@@ -421,7 +442,7 @@
     }
     function reset() {
         stopSpeech()
-        balls=[];pending=[];particles=[];impacts=[];score=0;gauge=0;nextLevel=randomLevel();
+        balls=[];pending=[];particles=[];impacts=[];score=0;throwGauge=0;strikeGauge=0;strikeDamage=1;nextLevel=randomLevel();
         activePlacements=[];dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;dropBlockedUntil=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
@@ -439,18 +460,47 @@
         hint('次の玉まで一瞬待機…');
         audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
     }
+    // 途中まで削った耐久はラッシュ終了時に破棄する。成立待ちの技への
+    // 連打進捗は別物なのでリセットしない。
+    function resetRushDamage(){
+        for(const b of balls){
+            b.game.hits=0;
+            if(b.game.special?.state==='black')
+                b.game.special.remaining=SPECIAL[b.game.level].blackHits;
+        }
+        strikeDamage=1;
+    }
     function startStrike() {
-        if(mode!=='playing'||gauge<50||!balls.length)return;
-        gauge-=50;mode='strike';dangerSince=null;strikeEnds=currentTime+STRIKE_TIME;
+        if(mode!=='playing'||strikeGauge<RUSH_MIN||!balls.length)return;
+        const charge=strikeGauge;
+        strikeDamage=charge>=100?FULL_DAMAGE:1;
+        strikeGauge=0;
+        resetRushDamage(); // 必ず満タンから開始
+        strikeDamage=charge>=100?FULL_DAMAGE:1;
+        mode='strike';dangerSince=null;strikeEnds=currentTime+STRIKE_TIME*charge/100;
         audio.start();audio.fx('rush');speak('打撃ラッシュ！',true);
-        notify('打撃ラッシュ！！',1200);hint('物理停止！ 6秒間、黒玉を連打して処分！');updateHud();
+        notify(charge>=100?'全力打撃！！':'打撃ラッシュ！！',1200);
+        hint('物理停止！ 残り時間は充填量に比例。玉を連打して処分！');updateHud();
     }
     function startThrow() {
-        if(mode!=='playing'||gauge<100||!balls.length)return;
-        gauge-=100;mode='throw';dangerSince=null;throwEnds=currentTime+THROW_TIME;
+        if(mode!=='playing'||throwGauge<RUSH_MIN||!balls.length)return;
+        const charge=throwGauge;
+        throwGauge=0;
+        mode='throw';dangerSince=null;throwEnds=currentTime+THROW_TIME*charge/100;
         pending=[]; // 投げ中に合体予約を持ち込まない
+        if(charge>=100){
+            // MAXだけ、盤面内の黒玉を即時除去。得点や新規合体は発生させない。
+            const blacks=balls.filter(b=>b.game.special?.state==='black');
+            for(const b of blacks){
+                sparkle(b.position.x,b.position.y,'#f3c976',12);
+                impactSpark(b.position.x,b.position.y,b.game.level,'break');
+                removeBall(b);
+            }
+        }
         audio.start();audio.fx('rush');speak('投げ！',true);
-        notify('投げラッシュ！！',1200);hint('6秒間、何度でも玉を掴んで移動！');updateHud();
+        notify(charge>=100?'黒玉一掃！！':'投げラッシュ！！',1200);
+        hint(charge>=100?'黒玉全消去！ 6秒間、何度でも玉を掴んで移動！':
+            '何度でも玉を掴んで移動！');updateHud();
     }
     function queueTouchingPairs() {
         // 投げ中の接触はcollisionStartが発火済み。再開時に隣接ペアを拾い直す。
@@ -504,10 +554,11 @@
         sparkle(x,y,'#ffe2a8',8);impactSpark(x,y,b.game.level,'hit');
         shake=3;audio.fx('hit',b.game.level);
         if(state==='pending') {
+            chargeStrike(b.game.special);
             b.game.special.remaining--;
             if(b.game.special.remaining<=0)resolveSpecial(b);
         }else if(state==='black') {
-            b.game.special.remaining--;
+            b.game.special.remaining-=strikeDamage;
             if(b.game.special.remaining<=0) {
                 sparkle(b.position.x,b.position.y,'#d95a4b',16);
                 impactSpark(b.position.x,b.position.y,b.game.level,'break');
@@ -515,7 +566,7 @@
                 points((b.game.level+1)*3);
             }
         }else {
-            b.game.hits++;
+            b.game.hits+=strikeDamage;
             if(b.game.hits>=2**b.game.level) {
                 sparkle(b.position.x,b.position.y,'#d95a4b',16);
                 impactSpark(b.position.x,b.position.y,b.game.level,'break');
@@ -580,6 +631,7 @@
             }
             balls.forEach(b=>{if(b.game.flash>0)b.game.flash--});
             if(mode==='strike'&&currentTime>=strikeEnds) {
+                resetRushDamage();
                 mode='playing';queueTouchingPairs();notify('ラッシュ終了！');hint('盤面をタップして落下／成立待ち玉は連打');updateHud();
             }
             if(mode==='throw'&&currentTime>=throwEnds)finishThrow();
@@ -721,7 +773,7 @@
             ctx.beginPath();ctx.arc(0,0,r-2,0,Math.PI*2);ctx.stroke();
             if(mode==='strike') {
                 ctx.fillStyle='#fbe7a9';ctx.font='bold '+Math.min(22,r*.55)+'px system-ui';
-                ctx.fillText('残'+special.remaining,0,r*.46);
+                ctx.fillText('残'+Math.ceil(special.remaining),0,r*.46);
             }
         }
         ctx.restore();
@@ -764,7 +816,7 @@
         bg();
         balls.forEach(b=>{
             const black=b.game.special?.state==='black';
-            ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,b.game.hits,b.angle,black,b.game.special?.state==='pending');
+            ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,Math.ceil(b.game.hits),b.angle,black,b.game.special?.state==='pending');
             drawSpecialOverlay(b);
         });
         for(const p of particles){ctx.globalAlpha=clamp(p.life/42,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size)}
