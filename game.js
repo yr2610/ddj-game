@@ -84,6 +84,7 @@
 
     const audio = {
         ctx:null, next:0, index:0,noiseBuffer:null,iosUnlocked:false,
+        samples:{},sampleLoadStarted:false,sampleTurn:0,fxOutput:null,
         voiceBuffers:null,voiceLoadStarted:false,pendingVoice:null,voiceFailed:false,voiceIndex:0,
         async loadVoices() {
             if(this.voiceLoadStarted||!MOBILE_VOICE||!this.ctx)return;
@@ -102,6 +103,39 @@
                 this.voiceFailed=true;this.pendingVoice=null;
                 console.warn('収録ボイスを取得できません:',e);
                 ui.voice.textContent='声 読込失敗';
+            }
+        },
+        // KenneyのCC0音源を同梱して再生。Vorbis未対応Safari等は旧Web Audio合成音へ退避。
+        async loadSamples(){
+            if(this.sampleLoadStarted||!this.ctx)return;
+            this.sampleLoadStarted=true;
+            const names=['hit-light','hit-alt','hit-heavy','hit-heavy2','break','split','merge'];
+            await Promise.all(names.map(async name=>{
+                try{
+                    const response=await fetch('./assets/audio/'+name+'.ogg?v=arcade1');
+                    if(!response.ok)throw Error('HTTP '+response.status);
+                    const buffer=await this.ctx.decodeAudioData(await response.arrayBuffer());
+                    this.samples[name]=buffer;
+                }catch(e){
+                    // 一部のiOS/SafariではOgg Vorbisが未対応。全音声が止まることはない。
+                    console.warn('サンプル音声を使用できません（合成音へフォールバック）:',name,e);
+                }
+            }));
+        },
+        playSample(name,volume=.35,rate=1,time=null){
+            const buffer=this.samples[name];
+            if(muted||!this.ctx||!buffer||this.ctx.state!=='running')return false;
+            try{
+                const src=this.ctx.createBufferSource(),gain=this.ctx.createGain();
+                src.buffer=buffer;
+                src.playbackRate.value=rate;
+                gain.gain.value=volume;
+                src.connect(gain);gain.connect(this.fxOutput||this.ctx.destination);
+                src.start(time??this.ctx.currentTime);
+                return true;
+            }catch(e){
+                console.warn('効果音の再生に失敗しました:',name,e);
+                return false;
             }
         },
         sampleVoice(text) {
@@ -143,8 +177,20 @@
                 try{this.ctx=new A()}catch(e){
                     console.warn('音声の初期化に失敗しました:',e);return;
                 }
+                // 高速連打で多数のPCMが重なった時のピークをソフトに抑える。
+                if(this.ctx.createDynamicsCompressor){
+                    const limiter=this.ctx.createDynamicsCompressor();
+                    limiter.threshold.value=-15;
+                    limiter.knee.value=9;
+                    limiter.ratio.value=5;
+                    limiter.attack.value=.003;
+                    limiter.release.value=.16;
+                    limiter.connect(this.ctx.destination);
+                    this.fxOutput=limiter;
+                }
             }
             this.resume();
+            this.loadSamples();
             this.loadVoices();
             this.next=Math.max(this.next,this.ctx.currentTime+.02);
         },
@@ -217,6 +263,33 @@
         fx(name,level=0) {
             if(!this.ctx||muted)return;
             const t=this.ctx.currentTime;
+            // 90年代の格ゲー風：短く鋭いパンチと重い破砕音をPCMで再生。
+            // 同じ音を連打しても毎回BufferSourceを作るので前の音を途切れさせない。
+            const variation=1+(Math.random()-.5)*.08;
+            if(name==='hit'){
+                const heavy=level>=4,clip=heavy?
+                    (this.sampleTurn++%2?'hit-heavy':'hit-heavy2'):
+                    (this.sampleTurn++%2?'hit-light':'hit-alt');
+                if(this.playSample(clip,heavy?.37:.32,variation))return;
+            }
+            if(name==='merge'){
+                if(this.playSample('merge',.29,variation)){
+                    if(level>=5)this.playSample('hit-heavy',.18,.91);
+                    return;
+                }
+            }
+            if(name==='break'){
+                if(this.playSample('break',.38,variation)){
+                    if(level>=5)this.playSample('hit-heavy',.24,.87);
+                    return;
+                }
+            }
+            if(name==='split'){
+                if(this.playSample('split',.40,variation)){
+                    this.playSample('hit-heavy2',.34,.9,t+.014);
+                    return;
+                }
+            }
             if(name==='drop')this.tone(160,.09,'triangle',.08,t,105);
             if(name==='merge')this.impact(level,'merge');
             if(name==='hit')this.impact(level,'hit');
