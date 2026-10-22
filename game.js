@@ -19,8 +19,8 @@
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
     const W = 360, H = 525, FLOOR = 515, LEFT = 11, RIGHT = 349, DANGER = 96, SPAWN = 48;
     const DROP_COOLDOWN=500, SPECIAL_RECOVERY=700, DANGER_GRACE=6600;
-    const STRIKE_TIME=6000, THROW_TIME=6000, RUSH_COUNTDOWN=3000;
-    const RUSH_MIN=50, FULL_DAMAGE=1.25;
+    const STRIKE_TIME=9000, THROW_TIME=9000, RUSH_COUNTDOWN=3000;
+    const RUSH_MIN=50, RUSH_MIN_TIME=3000, FULL_DAMAGE=1.25;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -265,7 +265,11 @@
             elapsed<=260?3.25:elapsed<=400?2.25:1.25;
         strikeGauge=clamp(strikeGauge+amount,0,100);
     }
-    function rushSeconds(charge){return (charge*.06).toFixed(1)}
+    // 50%=3秒、75%=6秒、100%=9秒。最後の3秒だけ中央カウントダウンする。
+    function rushDuration(charge,maxTime){
+        return RUSH_MIN_TIME+(maxTime-RUSH_MIN_TIME)*clamp((charge-RUSH_MIN)/(100-RUSH_MIN),0,1);
+    }
+    function rushSeconds(charge,maxTime){return (rushDuration(charge,maxTime)/1000).toFixed(1)}
     // 次球の解禁は経過時間だけで決定する。着地や物理速度に依存しない。
     function updateDropCooldown(){
         if(mode==='playing'&&!dropReady&&currentTime-lastDrop>=DROP_COOLDOWN){
@@ -309,10 +313,10 @@
         ui.throwMeter.classList.toggle('full-charge',throwFull);
         ui.strike.disabled=mode!=='playing'||strikeGauge<RUSH_MIN||balls.length===0;
         ui.throw.disabled=mode!=='playing'||throwGauge<RUSH_MIN||balls.length===0;
-        ui.strikeInfo.textContent=strikeFull?'6秒・威力1.25倍':
-            strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge)+'秒':'50%で解禁';
-        ui.throwInfo.textContent=throwFull?'6秒・黒玉全消去':
-            throwGauge>=RUSH_MIN?rushSeconds(throwGauge)+'秒':'50%で解禁';
+        ui.strikeInfo.textContent=strikeFull?'9秒・威力1.25倍':
+            strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge,STRIKE_TIME)+'秒':'50%で解禁';
+        ui.throwInfo.textContent=throwFull?'9秒・黒玉全消去':
+            throwGauge>=RUSH_MIN?rushSeconds(throwGauge,THROW_TIME)+'秒':'50%で解禁';
     }
     function updateNext() {
         const d=TIERS[nextLevel];
@@ -476,7 +480,7 @@
         strikeGauge=0;
         resetRushDamage(); // 必ず満タンから開始
         strikeDamage=charge>=100?FULL_DAMAGE:1;
-        mode='strike';dangerSince=null;strikeEnds=currentTime+STRIKE_TIME*charge/100;
+        mode='strike';dangerSince=null;strikeEnds=currentTime+rushDuration(charge,STRIKE_TIME);
         audio.start();audio.fx('rush');speak('打撃ラッシュ！',true);
         notify(charge>=100?'全力打撃！！':'打撃ラッシュ！！',1200);
         hint('物理停止！ 残り時間は充填量に比例。玉を連打して処分！');updateHud();
@@ -485,7 +489,7 @@
         if(mode!=='playing'||throwGauge<RUSH_MIN||!balls.length)return;
         const charge=throwGauge;
         throwGauge=0;
-        mode='throw';dangerSince=null;throwEnds=currentTime+THROW_TIME*charge/100;
+        mode='throw';dangerSince=null;throwEnds=currentTime+rushDuration(charge,THROW_TIME);
         pending=[]; // 投げ中に合体予約を持ち込まない
         if(charge>=100){
             // MAXだけ、盤面内の黒玉を即時除去。得点や新規合体は発生させない。
@@ -498,7 +502,7 @@
         }
         audio.start();audio.fx('rush');speak('投げ！',true);
         notify(charge>=100?'黒玉一掃！！':'投げラッシュ！！',1200);
-        hint(charge>=100?'黒玉全消去！ 6秒間、何度でも玉を掴んで移動！':
+        hint(charge>=100?'黒玉全消去！ 9秒間、何度でも玉を掴んで移動！':
             '何度でも玉を掴んで移動！');updateHud();
     }
     function queueTouchingPairs() {
