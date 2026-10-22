@@ -336,7 +336,7 @@ footer {color:#a18a85}
 }
 
 
-/* 独立した打撃・投げゲージ。どちらも50%から3秒で発動できる。 */
+/* 独立した打撃・投げゲージ。どちらも30%から3秒で発動できる。 */
 .rush-gauges {display:grid;gap:6px}
 .rush-track .rush-top {margin-bottom:3px;min-width:0}
 .rush-track .rush-title {font-size:15px;line-height:1.05;letter-spacing:.035em}
@@ -363,7 +363,7 @@ footer {color:#a18a85}
 }
 .min-marker {
     position:absolute;
-    left:50%;
+    left:30%;
     top:0;
     height:100%;
     width:2px;
