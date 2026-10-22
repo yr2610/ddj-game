@@ -688,7 +688,7 @@
         ctx.fillStyle='#fff1dd';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.fillText('危険ライン',48,DANGER+22);
         ctx.fillStyle='#2b2526b8';ctx.fillRect(0,FLOOR,W,H-FLOOR);
     }
-    function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false) {
+    function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false,warningAlpha=0) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
         ctx.shadowColor='#2b27233d';ctx.shadowBlur=7;ctx.shadowOffsetY=4;
         ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
@@ -699,6 +699,15 @@
         ctx.strokeStyle='#344755';ctx.lineWidth=r>35?3:2;ctx.stroke();
         ctx.beginPath();ctx.arc(-r*.2,-r*.26,r*.48,Math.PI*1.1,Math.PI*1.62);
         ctx.strokeStyle='#ffffff72';ctx.lineWidth=Math.max(2,r*.08);ctx.stroke();
+        // 残り時間が少ない成立待ち玉だけ、本体全体を赤く明滅させる。
+        // 漢字や残り打撃回数はこのあとに描き、常に読める状態を保つ。
+        if(warningAlpha>0){
+            ctx.beginPath();ctx.arc(0,0,r-1,0,Math.PI*2);
+            ctx.fillStyle='rgba(255,33,35,'+warningAlpha+')';ctx.fill();
+            ctx.lineWidth=3;
+            ctx.strokeStyle='rgba(255,135,105,'+Math.min(.95,.28+warningAlpha)+')';
+            ctx.stroke();
+        }
         ctx.fillStyle=black?'#f4ebe1':'#1d2b35';
         const nameSize=pending?Math.min(r*.7,32):Math.min(r*1.20,lv>=7?38:40);
         ctx.font=nameSize+'px "Yuji Boku","Yu Mincho",serif';
@@ -764,6 +773,19 @@
         ctx.closePath();ctx.fill();
         ctx.globalCompositeOperation='source-over';
         ctx.restore();
+    }
+    // 残り時間リングが赤くなるのと同時（全9秒の残り35%）に本体も赤明滅。
+    // 特殊玉が成立・時間切れになった時点で即終了。ラッシュ終了硬直中は
+    // currentTime 自体が停止するため、他のタイマー同様に明滅も静止する。
+    function specialWarningAlpha(b){
+        const special=b.game.special;
+        if(special?.state!=='pending')return 0;
+        const remaining=special.expires-currentTime;
+        const threshold=SPECIAL_TIME*.35;
+        if(remaining<=0||remaining>=threshold)return 0;
+        const urgency=clamp(1-remaining/threshold,0,1);
+        const pulse=(1+Math.sin(currentTime*Math.PI*2/330))*.5;
+        return (.12+.50*pulse)*(.82+.18*urgency);
     }
     function drawSpecialOverlay(b) {
         const special=b.game.special;
@@ -871,7 +893,7 @@
         bg();
         balls.forEach(b=>{
             const black=b.game.special?.state==='black';
-            ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,Math.ceil(b.game.hits),b.angle,black,b.game.special?.state==='pending');
+            ballDraw(b.game.level,b.position.x,b.position.y,b.circleRadius,b.game.flash,1,Math.ceil(b.game.hits),b.angle,black,b.game.special?.state==='pending',specialWarningAlpha(b));
             drawSpecialOverlay(b);
         });
         for(const p of particles){ctx.globalAlpha=clamp(p.life/42,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size)}
