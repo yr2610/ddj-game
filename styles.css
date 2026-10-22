@@ -388,3 +388,24 @@ footer {color:#a18a85}
     .rush-track .rush-title span {font-size:8px;margin-left:3px}
     .rush-btn small {font-size:9px}
 }
+
+
+/* 最終戦専用タイマー。通常時のラッシュパネルと入れ替える。 */
+.final-panel {
+    border:1px solid #9b6b3b;border-radius:12px;
+    padding:12px 13px 10px;
+    background:linear-gradient(165deg,#38212a,#1a2635);
+    box-shadow:inset 0 0 20px #d58a261c;
+    color:#f8e8ce;
+}
+.final-top,.final-under {display:flex;justify-content:space-between;align-items:center;gap:8px}
+.final-top span {font-family:var(--brush-font);font-size:22px;color:#f4c782}
+.final-top strong {font-size:21px;font-variant-numeric:tabular-nums;color:#fff2d3}
+.final-meter {height:19px;border-radius:12px;background:#110f18;border:2px solid #80604a;overflow:hidden;margin:8px 0 6px}
+.final-fill {height:100%;width:100%;border-radius:12px;background:linear-gradient(90deg,#d7443b,#efa03e,#ffe0a0);transition:width .12s linear}
+.final-under {font-size:11px;font-weight:800;color:#dac8b1}
+.final-panel.urgent .final-top strong {color:#ff6158;animation:final-urgent .43s ease-in-out infinite alternate}
+.final-panel.urgent .final-fill {background:linear-gradient(90deg,#a52231,#fc4d3d,#ffb098)}
+@keyframes final-urgent {from{opacity:.7}to{opacity:1}}
+@media(max-height:700px){.final-panel {padding:7px 10px}.final-top span{font-size:18px}.final-top strong{font-size:18px}.final-meter{height:13px;margin:5px 0}}
+@media(prefers-reduced-motion:reduce){.final-panel.urgent .final-top strong{animation:none}}
