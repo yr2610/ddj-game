@@ -58,6 +58,7 @@
     let rushEndPauseMs=0, rushEndKind=null;
     let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
+    let rushReadyQueue=[];
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
     ui.best.textContent=best.toLocaleString('ja-JP');
@@ -235,13 +236,40 @@
     function hint(s){ui.hint.textContent=s}
     function clearNotice() {
         if(alertTimer){clearTimeout(alertTimer);alertTimer=null}
+        rushReadyQueue=[];
         ui.alert.classList.remove('active');
         ui.alert.textContent='';
+    }
+    // 技の成立宣告と同じ大きさ・同じ場所にラッシュ使用可能を通知する。
+    // 技あり等の通知中にゲージが30%になっても上書きせず、宣告後に表示。
+    function showNextRushReady(){
+        if(!rushReadyQueue.length||mode==='menu'||mode==='ended')return;
+        const type=rushReadyQueue.shift();
+        if((type==='strike'?strikeGauge:throwGauge)<RUSH_MIN){
+            showNextRushReady();
+            return;
+        }
+        notify(type==='strike'?'打撃ラッシュOK！':'投げラッシュOK！',1150);
+    }
+    function queueRushReady(type){
+        if(mode==='menu'||mode==='ended')return;
+        rushReadyQueue.push(type);
+        if(!alertTimer)showNextRushReady();
     }
     function notify(s,ms=850) {
         if(alertTimer){clearTimeout(alertTimer);alertTimer=null}
         ui.alert.textContent=s;ui.alert.classList.add('active');
-        alertTimer=setTimeout(()=>{ui.alert.classList.remove('active');alertTimer=null},ms);
+        alertTimer=setTimeout(()=>{
+            ui.alert.classList.remove('active');
+            alertTimer=null;
+            // CSS演出を再始動するため、わずかに間を空けて次を表示。
+            if(rushReadyQueue.length){
+                alertTimer=setTimeout(()=>{
+                    alertTimer=null;
+                    showNextRushReady();
+                },90);
+            }
+        },ms);
     }
     function points(n) {
         score+=n;
@@ -257,7 +285,12 @@
         return supportHeight*supportHeight*sizeFactor*1.4*THROW_CHARGE_MULTIPLIER;
     }
     // 高さによる従来の蓄積は投げ専用。
-    function addGauge(n) {throwGauge=clamp(throwGauge+n,0,100);updateHud()}
+    function addGauge(n) {
+        const before=throwGauge;
+        throwGauge=clamp(throwGauge+n,0,100);
+        updateHud();
+        if(before<RUSH_MIN&&throwGauge>=RUSH_MIN)queueRushReady('throw');
+    }
     // 成立待ち玉への打撃だけで蓄積。速いほど増加し、獲得量は旧版の1/4。
     // 基本値は初打2.5%、以降は同じ玉への打撃間隔で判定する。
     function chargeStrike(special){
@@ -265,7 +298,9 @@
         special.lastHitAt=currentTime;
         const amount=elapsed===null?2.5:elapsed<=110?5:elapsed<=170?4.25:
             elapsed<=260?3.25:elapsed<=400?2.25:1.25;
+        const before=strikeGauge;
         strikeGauge=clamp(strikeGauge+amount*STRIKE_CHARGE_MULTIPLIER,0,100);
+        if(before<RUSH_MIN&&strikeGauge>=RUSH_MIN)queueRushReady('strike');
     }
     // 30%=3秒、50%=5秒、75%=7.5秒、100%=10秒。最後の3秒にカウントダウン。
     function rushDuration(charge,maxTime){
@@ -448,6 +483,7 @@
     }
     function reset() {
         stopSpeech()
+        clearNotice();
         balls=[];pending=[];particles=[];impacts=[];score=0;throwGauge=0;strikeGauge=0;strikeDamage=1;nextLevel=randomLevel();
         activePlacements=[];dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
@@ -479,6 +515,7 @@
     }
     function startStrike() {
         if(mode!=='playing'||rushEndPauseMs>0||strikeGauge<RUSH_MIN||!balls.length)return;
+        rushReadyQueue=rushReadyQueue.filter(type=>type!=='strike');
         const charge=strikeGauge;
         strikeGauge=0;
         resetRushDamage(); // 必ず満タンから開始
@@ -490,6 +527,7 @@
     }
     function startThrow() {
         if(mode!=='playing'||rushEndPauseMs>0||throwGauge<RUSH_MIN||!balls.length)return;
+        rushReadyQueue=rushReadyQueue.filter(type=>type!=='throw');
         const charge=throwGauge;
         throwGauge=0;
         mode='throw';dangerSince=null;throwEnds=currentTime+rushDuration(charge,THROW_TIME);
