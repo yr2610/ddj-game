@@ -299,7 +299,7 @@
     }
     function points(n) {
         score+=n;
-        if(score>best) {best=score;try{localStorage.setItem('ddj-best-v1',String(best))}catch(_){}}
+        if(!FINAL_PREVIEW&&score>best) {best=score;try{localStorage.setItem('ddj-best-v1',String(best))}catch(_){}}
         ui.score.textContent=score.toLocaleString('ja-JP');ui.best.textContent=best.toLocaleString('ja-JP');
     }
     // ゲージは「落とした玉の着地点が確定したとき」に一度だけ加算する。
