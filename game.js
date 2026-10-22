@@ -505,7 +505,11 @@
         ctx.fillStyle=gradient;ctx.fill();
         ctx.lineWidth=stage>=2?2:3;ctx.strokeStyle='#5e393b';ctx.stroke();
         ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#29202a';
-        ctx.font=(stage===3?10:stage===2?17:stage===1?27:39)+'px "Yuji Boku","Yu Mincho",serif';
+        // ボスの大道塾はサイズに見合う大きな筆文字。中道塾も少し拡大。
+        // 円から文字がはみ出さないよう横幅には従来の上限を適用。
+        const finalNameSize=stage===0?Math.min(radius*.62,65):
+            stage===1?Math.min(radius*.6,36):stage===2?17:10;
+        ctx.font=finalNameSize+'px "Yuji Boku","Yu Mincho",serif';
         ctx.fillText(stage===3?'ミニ':def.name,0,stage===3?0:-radius*.13,radius*1.8);
         if(stage<3){
             ctx.font='bold '+(stage===2?10:16)+'px system-ui';
@@ -968,7 +972,11 @@
             ctx.stroke();
         }
         ctx.fillStyle=black?'#f4ebe1':'#1d2b35';
-        const nameSize=pending?Math.min(r*.7,32):Math.min(r*1.20,lv>=7?38:40);
+        // 大玉ほど筆文字がしっかり主張するように拡大。
+        // 空道は2字、大道塾は3字なので、文字数に応じて高さを調整する。
+        const nameSize=pending?Math.min(r*.7,32):
+            lv===7?Math.min(r*.85,82):
+            lv===8?Math.min(r*.60,72):Math.min(r*1.20,40);
         ctx.font=nameSize+'px "Yuji Boku","Yu Mincho",serif';
         const name=black?SPECIAL[lv].blackName:d.name;
         ctx.textAlign='center';ctx.textBaseline='middle';
