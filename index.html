@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Yuji+Boku&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=20261021-recovery1">
+  <link rel="stylesheet" href="./styles.css?v=20261022-dualrush1">
   <script defer src="./vendor/matter.min.js"></script>
-  <script defer src="./game.js?v=20261021-droponly1"></script>
+  <script defer src="./game.js?v=20261022-dualrush1"></script>
 </head>
 <body>
   <main class="app">
@@ -65,16 +65,24 @@
             </svg>
           </h1>
           <p class="panel-slogan">落として、くっつけて、叩いて、セイッ！！</p>
-          <div class="rule-card">同じ文字の玉を合わせて進化！<br><strong>効果4発・技あり8発・一本16発を9秒以内に叩いて成立！</strong><br>失敗した黒玉は打撃ラッシュでのみ破壊可能。<br>危険ライン超過が約6.6秒続くと試合終了。<br>ゲージ50%で6秒打撃、100%で6秒投げ！</div>
+          <div class="rule-card">同じ文字の玉を合わせて進化！<br><strong>効果4発・技あり8発・一本16発を9秒以内に叩いて成立！</strong><br>失敗した黒玉は打撃ラッシュでのみ破壊可能。<br>危険ライン超過が約6.6秒続くと試合終了。<br>打撃は連打、投げは着地で蓄積！ 30%以上でラッシュ発動！<br>100%なら打撃威力UP／投げで黒玉全消去！</div>
           <button id="primaryBtn" class="primary-btn" type="button">一本勝負！ 始め！！</button>
           <p class="panel-footnote">盤面タップで落下 ／ 成立待ちの玉だけタップで連打！</p>
         </div>
       </div>
     </section>
     <section class="rush-panel" aria-label="ラッシュ操作">
-      <div class="rush-top"><span class="rush-title">RUSH <span id="rushText">気合い充填中</span></span><strong id="rushPct">0%</strong></div>
-      <div class="meter" role="progressbar" aria-label="ラッシュゲージ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="rushMeter"><div id="rushFill" class="meter-fill"></div><div class="mid-marker"></div></div>
-      <div class="rush-actions"><button id="strikeBtn" class="rush-btn strike" type="button" disabled>👊 打撃 <small>50%消費</small></button><button id="throwBtn" class="rush-btn throw" type="button" disabled>🥋 投げ <small>100%消費</small></button></div>
+      <div class="rush-gauges">
+        <div class="rush-track strike-track">
+          <div class="rush-top"><span class="rush-title">打撃 <span>技の連打で充填・MAX威力1.25倍</span></span><strong id="strikePct">0%</strong></div>
+          <div class="meter" role="progressbar" aria-label="打撃ラッシュゲージ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="strikeMeter"><div id="strikeFill" class="meter-fill"></div><div class="min-marker" aria-hidden="true"></div></div>
+        </div>
+        <div class="rush-track throw-track">
+          <div class="rush-top"><span class="rush-title">投げ <span>着地の高さで充填・MAX黒玉全消去</span></span><strong id="throwPct">0%</strong></div>
+          <div class="meter" role="progressbar" aria-label="投げラッシュゲージ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="throwMeter"><div id="throwFill" class="meter-fill"></div><div class="min-marker" aria-hidden="true"></div></div>
+        </div>
+      </div>
+      <div class="rush-actions"><button id="strikeBtn" class="rush-btn strike" type="button" disabled>👊 打撃 <small id="strikeInfo">30%で解禁</small></button><button id="throwBtn" class="rush-btn throw" type="button" disabled>🥋 投げ <small id="throwInfo">30%で解禁</small></button></div>
       <div id="hint" class="hint" aria-live="polite">盤面をタップして落下／成立待ち玉は連打</div>
     </section>
     <footer>※ 本作は非公式のパロディ作品です。いかなる競技団体とも無関係です。<br>PCでは端末の読み上げ音声、スマホではCC0の録音済み叫び声素材を使用します（音声の読み込みには通信が必要）。</footer>
