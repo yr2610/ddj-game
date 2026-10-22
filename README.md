@@ -141,7 +141,7 @@ Kenney [Impact Sounds](https://kenney.nl/assets/impact-sounds) および [Sci-fi
 | `break.ogg` | `impactGlass_medium_000.ogg` | 玉の撃破 |
 | `split.ogg` | `explosionCrunch_001.ogg` | 最終戦での分裂 |
 
-通常サウンドは同梱音源を優先し、端末ごとの `decodeAudioData` 成功を見て利用する。**iOS 18.3以前などOgg Vorbisが未対応の環境では、引き続き従来のWeb Audio合成SEが鳴る**。後日実機音質確認をし、必要に応じてWAV/AACサンプルを追加する。音源の読み込みやコーデックの制約でゲームが停止しないことを優先する。
+通常サウンドは同梱音源を優先し、端末ごとの `decodeAudioData` 成功を見て利用する。技成立時は専用の強打音、最終戦クリア時は短い勝利ファンファーレも鳴らす。**iOS 18.3以前などOgg Vorbisが未対応の環境では、引き続き従来のWeb Audio合成SEが鳴る**。後日実機音質確認をし、必要に応じてWAV/AACサンプルを追加する。音源の読み込みやコーデックの制約でゲームが停止しないことを優先する。
 
 ### 音声素材の出典・利用条件
 
