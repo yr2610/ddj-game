@@ -20,7 +20,7 @@
     const W = 360, H = 525, FLOOR = 515, LEFT = 11, RIGHT = 349, DANGER = 96, SPAWN = 48;
     const DROP_COOLDOWN=500, SPECIAL_RECOVERY=700, DANGER_GRACE=6600;
     const STRIKE_TIME=6000, THROW_TIME=6000, RUSH_COUNTDOWN=3000;
-    const RUSH_MIN=30, FULL_DAMAGE=1.25;
+    const RUSH_MIN=50, FULL_DAMAGE=1.25;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
     const TIERS = [
@@ -310,9 +310,9 @@
         ui.strike.disabled=mode!=='playing'||strikeGauge<RUSH_MIN||balls.length===0;
         ui.throw.disabled=mode!=='playing'||throwGauge<RUSH_MIN||balls.length===0;
         ui.strikeInfo.textContent=strikeFull?'6秒・威力1.25倍':
-            strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge)+'秒':'30%で解禁';
+            strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge)+'秒':'50%で解禁';
         ui.throwInfo.textContent=throwFull?'6秒・黒玉全消去':
-            throwGauge>=RUSH_MIN?rushSeconds(throwGauge)+'秒':'30%で解禁';
+            throwGauge>=RUSH_MIN?rushSeconds(throwGauge)+'秒':'50%で解禁';
     }
     function updateNext() {
         const d=TIERS[nextLevel];
