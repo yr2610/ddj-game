@@ -32,6 +32,8 @@
         {name:'ミニ道塾',hp:1,r:18,children:0,bonus:350}
     ];
     const FINAL_MAX_TIME=30000, FINAL_INTRO_TIME=2400;
+    // スマホでの連打を想定した高難度調整。最終戦だけ全玉の移動速度と時計を2倍に。
+    const FINAL_MOVE_MULTIPLIER=2, FINAL_TIME_DRAIN=2, FINAL_WARNING_TIME=7000;
     const FINAL_PREVIEW=/(?:^|&)final=1(?:&|$)/.test((location.search||'').replace(/^\?/,''));
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
     // 半径は前半を小さく、後半を急激に大きくして終盤の圧迫感を強める。
@@ -422,7 +424,9 @@
             restitution:.94,friction:.075,frictionStatic:.085,frictionAir:.001,density:.0006,slop:.025
         });
         b.game={finalStage:stage,hp:def.hp,alive:true,born:currentTime,flash:0,hits:0};
-        Body.setVelocity(b,velocity||{x:1.2,y:-.6});
+        const initial=velocity||{x:1.2,y:-.6};
+        Body.setVelocity(b,{x:initial.x*FINAL_MOVE_MULTIPLIER,
+            y:initial.y*FINAL_MOVE_MULTIPLIER});
         // 分裂直後から少し回り、衝突や打撃でも回転が変化する。
         Body.setAngularVelocity(b,(Math.random()-.5)*(stage>=2?.032:.022));
         balls.push(b);Composite.add(engine.world,b);
@@ -475,8 +479,8 @@
         b.game.hp--;b.game.flash=9;
         const dx=b.position.x-x,dy=b.position.y-y;
         const angle=Math.hypot(dx,dy)>2?Math.atan2(dy,dx):Math.random()*Math.PI*2;
-        const push=stage===0?1.85:stage===1?1.7:1.55;
-        const speedLimit=stage===0?4.1:stage===1?3.9:3.7;
+        const push=(stage===0?1.85:stage===1?1.7:1.55)*FINAL_MOVE_MULTIPLIER;
+        const speedLimit=(stage===0?4.1:stage===1?3.9:3.7)*FINAL_MOVE_MULTIPLIER;
         let nx=b.velocity.x*.55+Math.cos(angle)*push;
         let ny=b.velocity.y*.55+Math.sin(angle)*push;
         // 大玉が壁・天井・床へ押し付けられた場合は押し戻し、
@@ -563,6 +567,17 @@
     }
     function drawFinalOverlay(){
         ctx.save();
+        if(mode==='final'&&finalTimeLeft<=FINAL_WARNING_TIME){
+            // 画面全体の赤明滅。残り7秒で開始し、0秒に向けて激しくなる。
+            // 玉へのタップ判定は変えず、先に描画して時間表示の可読性も保つ。
+            const urgency=clamp(1-finalTimeLeft/FINAL_WARNING_TIME,0,1);
+            const pulse=(1+Math.sin(currentTime*Math.PI*2/330))*.5;
+            ctx.fillStyle='rgba(240,16,25,'+(.06+(.14+.20*urgency)*pulse)+')';
+            ctx.fillRect(0,0,W,H);
+            ctx.strokeStyle='rgba(255,78,59,'+(.33+.45*pulse)+')';
+            ctx.lineWidth=6+4*pulse;
+            ctx.strokeRect(3,3,W-6,H-6);
+        }
         if(mode==='final'||mode==='final-intro'){
             const ratio=clamp(finalTimeLeft/FINAL_MAX_TIME,0,1);
             round(18,12,W-36,15,7);ctx.fillStyle='#171923';ctx.fill();
@@ -924,15 +939,15 @@
         }
         if(mode==='final'){
             currentTime+=dt;
-            finalTimeLeft=Math.max(0,finalTimeLeft-dt);
+            finalTimeLeft=Math.max(0,finalTimeLeft-dt*FINAL_TIME_DRAIN);
             Engine.update(engine,dt);
             for(const b of balls){
                 const vel=b.velocity,speed=Math.hypot(vel.x,vel.y);
                 const stage=b.game.finalStage;
-                const minSpeed=stage===0?1.25:stage===1?1.4:.75;
+                const minSpeed=(stage===0?1.25:stage===1?1.4:.75)*FINAL_MOVE_MULTIPLIER;
                 if(speed<minSpeed){
                     const angle=Math.atan2(b.position.y-H/2,b.position.x-W/2)+.5;
-                    const restored=stage===0?1.55:stage===1?1.8:1.15;
+                    const restored=(stage===0?1.55:stage===1?1.8:1.15)*FINAL_MOVE_MULTIPLIER;
                     Body.setVelocity(b,{x:Math.cos(angle)*restored,y:Math.sin(angle)*restored});
                 }
                 const maxSpin=stage<=1?.035:.045;
