@@ -290,6 +290,22 @@
                     return;
                 }
             }
+            if(name==='finish'){
+                if(this.playSample('hit-heavy',.40,.94))
+                    this.playSample('merge',.23,1.05,t+.04);
+                else this.impact(Math.max(4,level),'break');
+                return;
+            }
+            if(name==='win'){
+                this.playSample('hit-heavy2',.42,.85);
+                this.playSample('merge',.30,1.0,t+.045);
+                // 勝利専用の短いファンファーレ。PC・スマホ共通。
+                [57,60,64,69].forEach((note,i)=>{
+                    const freq=440*Math.pow(2,(note-69)/12);
+                    this.tone(freq,.22,'sawtooth',.058,t+i*.12,null,.005);
+                });
+                return;
+            }
             if(name==='drop')this.tone(160,.09,'triangle',.08,t,105);
             if(name==='merge')this.impact(level,'merge');
             if(name==='hit')this.impact(level,'hit');
@@ -792,6 +808,7 @@
         points(TIERS[special.fromLevel].points);
         const name=TIERS[b.game.level].name;
         notify(name+'！！',800);speak(name+'！',true);
+        audio.fx('finish',b.game.level);
         sparkle(b.position.x,b.position.y,'#fff3ba',18);
         impactSpark(b.position.x,b.position.y,b.game.level,'merge');
         // すでに触れていた同レベルの玉との合体を拾い直す。
@@ -1017,7 +1034,7 @@
         if(finalOutcome){
             clearNotice();mode='ended';updateHud();
             const victory=finalOutcome==='win';
-            audio.fx(victory?'break':'end');
+            audio.fx(victory?'win':'end');
             speak(victory?'一本！':'そこまで！',true);
             ui.panel.innerHTML='<div class="panel-kicker">最終戦・'+(victory?'完全制覇':'時間切れ')+'</div>'+
                 '<h1 class="result-headline">'+(victory?'免許皆伝！！':'時間切れ！')+'</h1>'+
