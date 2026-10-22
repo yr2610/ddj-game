@@ -306,16 +306,43 @@
             if(name==='end')[0,.17,.34].forEach((d,i)=>this.tone(320-i*60,.32,'triangle',.15,t+d));
         },
         music() {
-            if(muted||!this.ctx||!['playing','strike','throw'].includes(mode)||this.ctx.state!=='running')return;
-            const a=this.ctx,notes=[220,0,294,330,0,294,247,0,220,247,294,0,330,294,247,0];
-            if(this.next<a.currentTime-.3)this.next=a.currentTime;
-            let n=0;
-            while(this.next<a.currentTime+.15&&n++<4) {
-                const i=this.index++%16;
-                if(i%4===0)this.tone(76,.12,'sine',.045,this.next,47);
-                if(i%4===2)this.tone(195,.06,'triangle',.023,this.next,85);
-                if(notes[i])this.tone(notes[i],.14,'triangle',mode==='strike'?.05:.027,this.next);
-                this.next+=mode==='strike'?.17:.235;
+            // 4小節の短調リフ。従来の16音単純ループを、ドラム・ベース・
+            // 2声のブラス風スタブ・主旋律へ分離。最後の戦いはテンポアップ。
+            if(muted||!this.ctx||!['playing','strike','throw','final'].includes(mode)||
+                this.ctx.state!=='running')return;
+            const a=this.ctx,fast=mode==='final'||mode==='strike';
+            const step=(60/(fast?152:136))/4;
+            const roots=[45,41,43,40]; // A / F / G / E
+            const lead=[
+                69,0,72,0,74,76,0,74,72,0,69,67,0,69,0,0,
+                69,0,72,0,77,76,0,72,69,0,65,67,0,69,0,0,
+                67,0,71,0,74,76,0,74,71,0,67,64,0,67,0,0,
+                68,0,71,0,76,74,0,71,68,0,64,0,68,71,0,0
+            ];
+            const pitch=n=>440*Math.pow(2,(n-69)/12);
+            if(this.next<a.currentTime-.25)this.next=a.currentTime+.02;
+            let count=0;
+            while(this.next<a.currentTime+.13&&count++<4) {
+                const i=this.index++%64,bar=Math.floor(i/16),beat=i%16;
+                const t=this.next,root=roots[bar];
+                // キック4つ打ち・裏拍スネア・刻むハイハット。
+                if(beat%4===0){
+                    this.tone(92,.092,'sine',fast?.047:.039,t,43,.002);
+                    this.tone(pitch(root),.21,'sawtooth',fast?.032:.026,t,null,.008);
+                }
+                if(beat%8===4){
+                    this.burst(t,.065,1650,.038,'highpass');
+                    this.tone(180,.045,'triangle',.016,t,92,.002);
+                }
+                if(beat%2===0)this.burst(t,.025,4800,fast?.013:.010,'highpass');
+                // 小節頭と3拍目に短いコードスタブ。
+                if(beat===0||beat===8){
+                    for(const offset of [12,15,19])
+                        this.tone(pitch(root+offset),.13,'sawtooth',fast?.013:.010,t,null,.006);
+                }
+                if(lead[i])this.tone(pitch(lead[i]),.17,fast?'sawtooth':'square',
+                    fast?.022:.017,t,null,.005);
+                this.next+=step;
             }
         }
     };
