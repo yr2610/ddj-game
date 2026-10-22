@@ -19,7 +19,7 @@
     const {Engine, Bodies, Body, Composite, Events, Query} = M;
     const W = 360, H = 525, FLOOR = 515, LEFT = 11, RIGHT = 349, DANGER = 96, SPAWN = 48;
     const DROP_COOLDOWN=500, SPECIAL_RECOVERY=700, DANGER_GRACE=6600;
-    const STRIKE_TIME=10000, THROW_TIME=10000, RUSH_COUNTDOWN=3000;
+    const STRIKE_TIME=10000, THROW_TIME=10000, RUSH_COUNTDOWN=3000, RUSH_END_PAUSE=1100;
     const RUSH_MIN=30, RUSH_MIN_TIME=3000, FULL_DAMAGE=1.25;
     const STRIKE_CHARGE_MULTIPLIER=.125, THROW_CHARGE_MULTIPLIER=2;
     // 容器幅338px。空道の半径を旧・塾長の97pxへ、暫定最終段の大道塾を116pxへ縮小。
@@ -55,6 +55,7 @@
     let engine, balls=[], pending=[], particles=[], impacts=[];
     let mode='menu', score=0, best=0, throwGauge=0, strikeGauge=0, strikeDamage=1, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dropBlockedUntil=0, dangerSince=null, strikeEnds=0, throwEnds=0;
+    let rushEndPauseMs=0, rushEndKind=null;
     let activePlacements=[], dropReady=true;
     let pointer=null, dragged=null, lastFrame=0, accumulator=0, shake=0, alertTimer=null;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
@@ -312,8 +313,8 @@
         ui.throwMeter.setAttribute('aria-valuenow',String(Math.floor(throwGauge)));
         ui.strikeMeter.classList.toggle('full-charge',strikeFull);
         ui.throwMeter.classList.toggle('full-charge',throwFull);
-        ui.strike.disabled=mode!=='playing'||strikeGauge<RUSH_MIN||balls.length===0;
-        ui.throw.disabled=mode!=='playing'||throwGauge<RUSH_MIN||balls.length===0;
+        ui.strike.disabled=mode!=='playing'||rushEndPauseMs>0||strikeGauge<RUSH_MIN||balls.length===0;
+        ui.throw.disabled=mode!=='playing'||rushEndPauseMs>0||throwGauge<RUSH_MIN||balls.length===0;
         ui.strikeInfo.textContent=strikeFull?'10秒・威力1.25倍':
             strikeGauge>=RUSH_MIN?rushSeconds(strikeGauge,STRIKE_TIME)+'秒':'30%で解禁';
         ui.throwInfo.textContent=throwFull?'10秒・黒玉全消去':
@@ -451,12 +452,13 @@
         activePlacements=[];dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;dropBlockedUntil=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
+        rushEndPauseMs=0;rushEndKind=null;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
         updateNext();updateHud();hint('盤面をタップして落下／成立待ち玉は連打');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
     }
     function drop() {
-        if(mode!=='playing'||currentTime<dropBlockedUntil||!dropReady||currentTime-lastDrop<DROP_COOLDOWN)return;
+        if(mode!=='playing'||rushEndPauseMs>0||currentTime<dropBlockedUntil||!dropReady||currentTime-lastDrop<DROP_COOLDOWN)return;
         const droppedLevel=nextLevel;
         const b=spawnBall(droppedLevel,pointerX,SPAWN);
         lastDrop=currentTime;dropReady=false;
@@ -476,7 +478,7 @@
         strikeDamage=1;
     }
     function startStrike() {
-        if(mode!=='playing'||strikeGauge<RUSH_MIN||!balls.length)return;
+        if(mode!=='playing'||rushEndPauseMs>0||strikeGauge<RUSH_MIN||!balls.length)return;
         const charge=strikeGauge;
         strikeGauge=0;
         resetRushDamage(); // 必ず満タンから開始
@@ -487,7 +489,7 @@
         hint('物理停止！ 残り時間は充填量に比例。玉を連打して処分！');updateHud();
     }
     function startThrow() {
-        if(mode!=='playing'||throwGauge<RUSH_MIN||!balls.length)return;
+        if(mode!=='playing'||rushEndPauseMs>0||throwGauge<RUSH_MIN||!balls.length)return;
         const charge=throwGauge;
         throwGauge=0;
         mode='throw';dangerSince=null;throwEnds=currentTime+rushDuration(charge,THROW_TIME);
@@ -518,6 +520,13 @@
             }
         }
     }
+    function startRushEnd(kind){
+        rushEndKind=kind;
+        rushEndPauseMs=RUSH_END_PAUSE;
+        clearNotice();
+        hint('ラッシュ終了！ 一時停止中…');
+        updateHud();
+    }
     function finishThrow() {
         if(mode!=='throw')return;
         if(dragged) {
@@ -528,7 +537,7 @@
         if(heldPointer!==null&&canvas.hasPointerCapture(heldPointer))canvas.releasePointerCapture(heldPointer);
         mode='playing';dangerSince=null;
         queueTouchingPairs();audio.fx('hit');speak('ドリャアッ！',true);
-        notify('投げ終了！！');hint('盤面をタップして落下／成立待ち玉は連打');updateHud();
+        startRushEnd('throw');
     }
     function pick(x,y,onlyPending=false,extra=0) {
         // タップ専用の判定のみ広げ、物理衝突や玉同士の合体判定は変更しない。
@@ -544,6 +553,7 @@
             Math.hypot(b.position.x-x,b.position.y-y)/(b.circleRadius+extra))[0]||null;
     }
     function hit(x,y) {
+        if(rushEndPauseMs>0)return false;
         const target=pick(x,y,mode!=='strike',HIT_MARGIN);
         if(!target)return false;
         const state=target.game.special?.state;
@@ -622,6 +632,17 @@
         if(currentTime-dangerSince>=DANGER_GRACE)end();
     }
     function step(dt) {
+        if(rushEndPauseMs>0){
+            // 終了宣告だけが動く専用の時計。ゲーム時計は停止し、
+            // 物理・技タイマー・危険ライン・設置判定・粒子更新も一切しない。
+            rushEndPauseMs=Math.max(0,rushEndPauseMs-dt);
+            if(rushEndPauseMs===0){
+                rushEndKind=null;
+                hint('盤面をタップして落下／成立待ち玉は連打');
+                updateHud();
+            }
+            return;
+        }
         if(engine&&['playing','strike','throw'].includes(mode)){
             // 成立直後もゲーム時計・物理演算・連打タイマーは進める。
             currentTime+=dt;
@@ -636,9 +657,10 @@
             balls.forEach(b=>{if(b.game.flash>0)b.game.flash--});
             if(mode==='strike'&&currentTime>=strikeEnds) {
                 resetRushDamage();
-                mode='playing';queueTouchingPairs();notify('ラッシュ終了！');hint('盤面をタップして落下／成立待ち玉は連打');updateHud();
+                mode='playing';queueTouchingPairs();startRushEnd('strike');
             }
             if(mode==='throw'&&currentTime>=throwEnds)finishThrow();
+            if(rushEndPauseMs>0)return;
             checkDanger();
         }
         particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.07;p.life--});
@@ -815,8 +837,37 @@
         ctx.restore();
         ctx.restore();
     }
+    // 格闘ゲーム風のラッシュ終了宣告。盤面上に重ねるだけなので
+    // ゲームを再開するまで玉もカウントダウンも完全に静止する。
+    function drawRushEnd(){
+        if(rushEndPauseMs<=0)return;
+        const appearance=clamp((RUSH_END_PAUSE-rushEndPauseMs)/120,0,1);
+        ctx.save();
+        ctx.globalAlpha=appearance;
+        ctx.fillStyle='rgba(8,7,13,.65)';
+        ctx.fillRect(0,0,W,H);
+        ctx.translate(W/2,H*.47);
+        ctx.fillStyle='rgba(37,13,18,.94)';
+        round(-W/2+13,-98,W-26,184,8);ctx.fill();
+        ctx.lineWidth=4;ctx.strokeStyle='#f6c781';ctx.stroke();
+        ctx.lineWidth=1;ctx.strokeStyle='#6c2a2c';
+        ctx.strokeRect(-W/2+19,-92,W-38,172);
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillStyle=rushEndKind==='throw'?'#a9e3f6':'#ffe1aa';
+        ctx.font='900 20px system-ui';
+        ctx.fillText(rushEndKind==='throw'?'投げラッシュ':'打撃ラッシュ',0,-64);
+        ctx.font='1000 93px "Yuji Boku","Yu Mincho",serif';
+        ctx.lineJoin='round';ctx.lineWidth=9;
+        ctx.strokeStyle='#5f171b';ctx.strokeText('終了！',0,11);
+        ctx.lineWidth=3;ctx.strokeStyle='#fff0b5';
+        ctx.strokeText('終了！',0,11);
+        ctx.fillStyle='#f9bc63';ctx.fillText('終了！',0,11);
+        ctx.fillStyle='#f7e0bc';ctx.font='bold 14px system-ui';
+        ctx.fillText('構え直し！',0,68);
+        ctx.restore();
+    }
     function render() {
-        ctx.save();if(shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+        ctx.save();if(rushEndPauseMs===0&&shake>.25)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
         bg();
         balls.forEach(b=>{
             const black=b.game.special?.state==='black';
@@ -866,6 +917,7 @@
             ctx.fillText('危険！ 残り '+Math.ceil((DANGER_GRACE-(currentTime-dangerSince))/1000)+' 秒',W/2,19);
         }
         ctx.restore();
+        drawRushEnd();
     }
     function resize() {
         const d=Math.min(window.devicePixelRatio||1,2.5);
@@ -882,6 +934,7 @@
     canvas.addEventListener('pointerdown',e=>{
         if(!['playing','strike','throw'].includes(mode))return;
         e.preventDefault();
+        if(rushEndPauseMs>0)return;
         audio.start();
         const {x,y}=coord(e);
         if(mode==='strike'){hit(x,y);return}
@@ -906,7 +959,7 @@
         }
     });
     canvas.addEventListener('pointermove',e=>{
-        if(pointer===null||e.pointerId!==pointer)return;
+        if(rushEndPauseMs>0||pointer===null||e.pointerId!==pointer)return;
         e.preventDefault();
         const {x,y}=coord(e);
         if(mode==='playing'){
@@ -918,6 +971,7 @@
         }
     });
     function release(e,canceled=false){
+        if(rushEndPauseMs>0)return;
         if(e.pointerId!==pointer)return;
         pointer=null;
         if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
@@ -930,7 +984,7 @@
     canvas.addEventListener('pointercancel',e=>release(e,true));
     canvas.addEventListener('lostpointercapture',e=>{if(e.pointerId===pointer)release(e,true)});
     canvas.addEventListener('keydown',e=>{
-        if(mode!=='playing')return;
+        if(mode!=='playing'||rushEndPauseMs>0)return;
         if(e.key==='ArrowLeft'||e.key==='ArrowRight') {
             e.preventDefault();
             pointerX=clamp(pointerX+(e.key==='ArrowLeft'?-15:15),0,W);
