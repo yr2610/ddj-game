@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Yuji+Boku&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=20261022-rush30-10-1">
+  <link rel="stylesheet" href="./styles.css?v=20261022-final1">
   <script defer src="./vendor/matter.min.js"></script>
-  <script defer src="./game.js?v=20261022-rush-ready-fit1"></script>
+  <script defer src="./game.js?v=20261022-final1"></script>
 </head>
 <body>
   <main class="app">
@@ -65,13 +65,13 @@
             </svg>
           </h1>
           <p class="panel-slogan">落として、くっつけて、叩いて、セイッ！！</p>
-          <div class="rule-card">同じ文字の玉を合わせて進化！<br><strong>効果4発・技あり8発・一本16発を9秒以内に叩いて成立！</strong><br>失敗した黒玉は打撃ラッシュでのみ破壊可能。<br>危険ライン超過が約6.6秒続くと試合終了。<br>打撃は連打、投げは着地で蓄積！ 30%以上でラッシュ発動！<br>100%なら打撃威力UP／投げで黒玉全消去！</div>
+          <div class="rule-card">同じ文字の玉を合わせて進化！<br><strong>効果4発・技あり8発・一本16発を9秒以内に叩いて成立！</strong><br>失敗した黒玉は打撃ラッシュでのみ破壊可能。<br>危険ライン超過が約6.6秒続くと試合終了。<br>打撃は連打、投げは着地で蓄積！ 30%以上でラッシュ発動！<br>100%なら打撃威力UP／投げで黒玉全消去！<br>大道塾玉が生まれたら最終戦！</div>
           <button id="primaryBtn" class="primary-btn" type="button">一本勝負！ 始め！！</button>
           <p class="panel-footnote">盤面タップで落下 ／ 成立待ちの玉だけタップで連打！</p>
         </div>
       </div>
     </section>
-    <section class="rush-panel" aria-label="ラッシュ操作">
+    <section id="rushPanel" class="rush-panel" aria-label="ラッシュ操作">
       <div class="rush-gauges">
         <div class="rush-track strike-track">
           <div class="rush-top"><span class="rush-title">打撃 <span>技の連打で充填・MAX威力1.25倍</span></span><strong id="strikePct">0%</strong></div>
@@ -84,6 +84,11 @@
       </div>
       <div class="rush-actions"><button id="strikeBtn" class="rush-btn strike" type="button" disabled>👊 打撃 <small id="strikeInfo">30%で解禁</small></button><button id="throwBtn" class="rush-btn throw" type="button" disabled>🥋 投げ <small id="throwInfo">30%で解禁</small></button></div>
       <div id="hint" class="hint" aria-live="polite">盤面をタップして落下／成立待ち玉は連打</div>
+    </section>
+    <section id="finalPanel" class="final-panel" aria-label="最終戦制限時間" style="display:none">
+      <div class="final-top"><span>最終戦・連打ぁ！！</span><strong id="finalTime">30.0秒</strong></div>
+      <div class="final-meter" aria-label="最終戦残り時間"><div id="finalFill" class="final-fill"></div></div>
+      <div class="final-under"><span>叩けぇ！ 全部消せ！</span><span id="finalKilled">撃破 0/43</span></div>
     </section>
     <footer>※ 本作は非公式のパロディ作品です。いかなる競技団体とも無関係です。<br>PCでは端末の読み上げ音声、スマホではCC0の録音済み叫び声素材を使用します（音声の読み込みには通信が必要）。</footer>
   </main>
