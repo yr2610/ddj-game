@@ -30,8 +30,8 @@
         {name:'中道塾',hp:12,r:60,children:4,bonus:3000},
         // 後半ほど「倒せば延命できる」調整。連続撃破の条件は付けず、
         // 小さい玉を一個ずつ倒した分が確実に時間へ還元される。
-        {name:'小道塾',hp:6,r:33,children:4,bonus:2400},
-        {name:'ミニ道塾',hp:1,r:18,children:0,bonus:1600}
+        {name:'小道塾',hp:6,r:33,children:4,bonus:1800},
+        {name:'ミニ道塾',hp:1,r:18,children:0,bonus:800}
     ];
     const FINAL_MAX_TIME=30000, FINAL_INTRO_TIME=2400;
     // スマホでの連打を想定した高難度調整。最終戦だけ全玉の移動速度と時計を2倍に。
