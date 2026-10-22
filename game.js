@@ -62,7 +62,10 @@
     const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
     // スマホのWeb Speech APIは無音になり得るため、CC0の実録ボイスを使う。
     // HaelDB (CC0): https://opengameart.org/content/male-gruntyelling-sounds
-    const MOBILE_VOICE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    // iPadOSはMacintoshのUAを返すことがある。iPhone/iPadは共通の録音掛け声を使用。
+    const IOS_AUDIO=/iPhone|iPad|iPod/i.test(navigator.userAgent)||
+        (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+    const MOBILE_VOICE=/Android/i.test(navigator.userAgent)||IOS_AUDIO;
     const VOICE_BASE = 'https://raw.githubusercontent.com/transitive-bullshit/ai-safety-doom/de99fce98d664c218944ec030859251f26c6bccf/public/game/audio/';
     const VOICE_FILES = ['player-pain-1.wav','player-pain-2.wav','player-death.wav'];
     const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
@@ -80,7 +83,7 @@
     ui.best.textContent=best.toLocaleString('ja-JP');
 
     const audio = {
-        ctx:null, next:0, index:0,noiseBuffer:null,
+        ctx:null, next:0, index:0,noiseBuffer:null,iosUnlocked:false,
         voiceBuffers:null,voiceLoadStarted:false,pendingVoice:null,voiceFailed:false,voiceIndex:0,
         async loadVoices() {
             if(this.voiceLoadStarted||!MOBILE_VOICE||!this.ctx)return;
@@ -116,13 +119,52 @@
             gain.gain.value=long?.35:.34;
             src.connect(gain);gain.connect(this.ctx.destination);src.start();
         },
+        resume() {
+            // iOS Safariはバックグラウンド復帰時に'suspended'だけでなく
+            // 'interrupted'になる。どちらも再開対象にする。
+            if(!this.ctx||this.ctx.state==='running'||this.ctx.state==='closed')return;
+            try{
+                const result=this.ctx.resume();
+                if(result&&typeof result.catch==='function')
+                    result.catch(e=>console.warn('音声再開に失敗しました:',e));
+            }catch(e){console.warn('音声再開に失敗しました:',e)}
+        },
         start() {
             const A=window.AudioContext||window.webkitAudioContext;
             if(!A)return;
-            if(!this.ctx)this.ctx=new A();
-            if(this.ctx.state==='suspended')this.ctx.resume().catch(()=>{});
+            if(!this.ctx){
+                // SafariのWeb Audioが消音スイッチに従い無音になるのを防ぐ。
+                // AudioContext作成前にplaybackセッションを明示（対応iOSのみ）。
+                if(IOS_AUDIO&&navigator.audioSession){
+                    try{navigator.audioSession.type='playback'}catch(e){
+                        console.warn('iOSオーディオセッション設定不可:',e);
+                    }
+                }
+                try{this.ctx=new A()}catch(e){
+                    console.warn('音声の初期化に失敗しました:',e);return;
+                }
+            }
+            this.resume();
             this.loadVoices();
             this.next=Math.max(this.next,this.ctx.currentTime+.02);
+        },
+        unlockIOS() {
+            if(!IOS_AUDIO)return;
+            this.start();
+            if(!this.ctx||this.ctx.state==='closed')return;
+            // Safariがユーザー操作と認めるtouchend/click中に
+            // ごく短い無音バッファを再生してWeb Audioを起動する。
+            // pointerdown(タッチ)だけでアンロック済みとは判定しない。
+            if(!this.iosUnlocked||this.ctx.state!=='running'){
+                try{
+                    const src=this.ctx.createBufferSource();
+                    src.buffer=this.ctx.createBuffer(1,1,this.ctx.sampleRate);
+                    src.connect(this.ctx.destination);
+                    src.start(0);
+                    this.iosUnlocked=true;
+                }catch(e){console.warn('iOS音声アンロックに失敗:',e)}
+                this.resume();
+            }
         },
         tone(freq,dur=.13,type='triangle',vol=.06,at,slide,attack=.009) {
             if(muted||!this.ctx)return;
@@ -1385,7 +1427,19 @@
         ui.voice.textContent=voiceEnabled?'声 ON':'声 OFF';ui.voice.classList.toggle('off',!voiceEnabled);
         if(voiceEnabled)speak('セイッ！',true);
     });
-    document.addEventListener('visibilitychange',()=>{lastFrame=performance.now();accumulator=0});
+    // タッチのpointerdownはiOSでメディア再生許可と見なされない場合がある。
+    // 指を離すtouchendとボタンのclickで再試行（Androidの操作・音は変更しない）。
+    if(IOS_AUDIO){
+        window.addEventListener('touchend',()=>audio.unlockIOS(),{capture:true,passive:true});
+        window.addEventListener('click',()=>audio.unlockIOS(),true);
+    }
+    document.addEventListener('visibilitychange',()=>{
+        lastFrame=performance.now();accumulator=0;
+        if(!document.hidden&&audio.ctx&&!muted)audio.start();
+    });
+    window.addEventListener('pageshow',()=>{
+        if(audio.ctx&&!muted)audio.start();
+    });
     function frame(ts){
         if(!lastFrame)lastFrame=ts;
         let dt=clamp(ts-lastFrame,0,45);lastFrame=ts;
