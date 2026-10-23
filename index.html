@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Yuji+Boku&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=20261022-final1">
+  <link rel="stylesheet" href="./styles.css?v=20261023-howto-timefly1">
   <script defer src="./vendor/matter.min.js"></script>
-  <script defer src="./game.js?v=20261023-arcade-fight-audio2"></script>
+  <script defer src="./game.js?v=20261023-howto-timefly1"></script>
 </head>
 <body>
   <main class="app">
@@ -64,9 +64,21 @@
               </g>
             </svg>
           </h1>
-          <p class="panel-slogan">落として、くっつけて、叩いて、セイッ！！</p>
-          <div class="rule-card">同じ文字の玉を合わせて進化！<br><strong>効果4発・技あり8発・一本16発を9秒以内に叩いて成立！</strong><br>失敗した黒玉は打撃ラッシュでのみ破壊可能。<br>危険ライン超過が約6.6秒続くと試合終了。<br>打撃は連打、投げは着地で蓄積！ 30%以上でラッシュ発動！<br>100%なら打撃威力UP／投げで黒玉全消去！<br>大道塾玉が生まれたら最終戦！</div>
+          <p class="panel-slogan"><span>落として、くっつけて、</span><span>叩いて、<strong>セイッ！</strong></span></p>
           <button id="primaryBtn" class="primary-btn" type="button">一本勝負！ 始め！！</button>
+          <details class="howto">
+            <summary class="howto-toggle">遊び方 <span aria-hidden="true">▼</span></summary>
+            <div class="rule-card">
+              同じ文字の玉をくっつけて進化！<br>
+              <strong>効果4発・技あり8発・一本16発を9秒以内に叩いて成立！</strong><br>
+              失敗した黒玉は打撃ラッシュでのみ破壊可能。<br>
+              危険ライン超過が約6.6秒続くと試合終了。<br>
+              打撃は連打、投げは着地で蓄積！ 30%以上でラッシュ発動！<br>
+              100%なら打撃威力UP／投げで黒玉全消去！<br>
+              大道塾玉が生まれたら最終戦！<br>
+              最終戦では玉を連打で倒し、撃破すると残り時間が回復！
+            </div>
+          </details>
           <p class="panel-footnote">盤面タップで落下 ／ 成立待ちの玉だけタップで連打！</p>
         </div>
       </div>
@@ -92,5 +104,6 @@
     </section>
     <footer>※ 本作は非公式のパロディ作品です。いかなる競技団体とも無関係です。<br>スマホ・タブレットのタッチ操作推奨（PCも同じ難易度です）。PCでは端末の読み上げ音声、スマホではCC0の録音済み叫び声素材を使用します（音声の読み込みには通信が必要）。</footer>
   </main>
+  <div id="timeFlyLayer" class="time-fly-layer" aria-hidden="true"></div>
 </body>
 </html>
