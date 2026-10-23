@@ -1211,22 +1211,17 @@
         if(shake>0)shake*=.72;
     }
     function round(x,y,w,h,r) {ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
-    // 元の滝の絵を活かし、日本の山寺の意匠だけを透過レイヤーで重ねる。
-    // 追加画像が読めなくても従来の背景描画は維持する。
+    // 描き直した和風背景（富士山・渓谷・滝・社・紅葉）を1枚絵として表示。
+    // 前回の装飾の重ね描きは廃止。玉の視認性を確保する暗幕のみ残す。
+    // 画像の読み込みに失敗した場合は単色の背景にフォールバックする。
     const scenery=new window.Image();
     scenery.decoding='async';
-    scenery.src='./assets/waterfall-sunset.webp?v=20261021-waterfall1';
-    const japaneseScenery=new window.Image();
-    japaneseScenery.decoding='async';
-    japaneseScenery.src='./assets/japanese-garden-overlay.svg?v=20261023-wafuu1';
+    scenery.src='./assets/wafuu-background.webp?v=20261024-fullscene1';
     function bg(){
         ctx.fillStyle='#433444';ctx.fillRect(0,0,W,H);
-        const hasScenery=scenery.complete&&scenery.naturalWidth>0;
-        const hasJapaneseScenery=japaneseScenery.complete&&japaneseScenery.naturalWidth>0;
-        if(hasScenery)ctx.drawImage(scenery,0,0,W,H);
-        if(hasJapaneseScenery)ctx.drawImage(japaneseScenery,0,0,W,H);
-        if(hasScenery||hasJapaneseScenery){
-            ctx.fillStyle='rgba(12,10,18,.34)';ctx.fillRect(0,0,W,H);
+        if(scenery.complete&&scenery.naturalWidth>0){
+            ctx.drawImage(scenery,0,0,W,H);
+            ctx.fillStyle='rgba(12,10,18,.18)';ctx.fillRect(0,0,W,H);
         }
         if(!finalGameActive){
             ctx.fillStyle='#bb222d26';ctx.fillRect(0,0,W,DANGER);
