@@ -411,6 +411,11 @@ footer {color:#a18a85}
 @media(prefers-reduced-motion:reduce){.final-panel.urgent .final-top strong{animation:none}}
 
 
+/* 盤面canvasは引き続きtouch-action:none、説明パネル内は縦スクロールを許可。 */
+.arena-shell{touch-action:auto}
+.overlay{touch-action:pan-y}
+.overlay-panel{touch-action:pan-y;overscroll-behavior:contain}
+
 /* タイトルは遊び方よりキャッチコピーを主役に。小さい画面でも2行で大きく読める。 */
 .overlay-panel .panel-slogan{
     display:grid;
