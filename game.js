@@ -592,6 +592,53 @@
         balls.push(b);Composite.add(engine.world,b);
         return b;
     }
+    const timeFlyLayer=$('timeFlyLayer');
+    function clearTimeEnergy(){
+        if(timeFlyLayer)timeFlyLayer.replaceChildren();
+    }
+    function flyTimeEnergy(x,y,recoveredMs,stage){
+        // タイムゲージが実際に回復した場合のみ飛ばす。満タン時は誤認させない。
+        if(recoveredMs<=0||!timeFlyLayer)return;
+        const meter=ui.finalFill.parentElement;
+        if(!meter)return;
+        const arenaRect=canvas.getBoundingClientRect();
+        const meterRect=meter.getBoundingClientRect();
+        if(!arenaRect.width||!arenaRect.height||!meterRect.width)return;
+        const sx=arenaRect.left+arenaRect.width*x/W;
+        const sy=arenaRect.top+arenaRect.height*y/H;
+        const filled=clamp(finalTimeLeft/FINAL_MAX_TIME,0,1);
+        const ex=meterRect.left+2+(meterRect.width-4)*filled;
+        const ey=meterRect.top+meterRect.height*.5;
+        const dx=ex-sx,dy=ey-sy;
+        // ボス分裂ほど光粒が多い。30fps相当の端末でも負荷を抑える。
+        const count=stage===0?8:stage===1?6:stage===2?5:3;
+        for(let i=0;i<count;i++){
+            const spark=document.createElement('span');
+            spark.className='time-energy'+(i===0?' time-energy--core':'');
+            const spread=(i-(count-1)/2);
+            const offsetX=spread*3.7;
+            const offsetY=Math.sin(i*2.7)*5;
+            spark.style.setProperty('--sx',(sx-6+offsetX)+'px');
+            spark.style.setProperty('--sy',(sy-6+offsetY)+'px');
+            spark.style.setProperty('--mx',(sx+dx*.44+spread*10-6)+'px');
+            spark.style.setProperty('--my',(sy+dy*.41-38-Math.abs(spread)*8)+'px');
+            spark.style.setProperty('--ex',(ex-5)+'px');
+            spark.style.setProperty('--ey',(ey-5)+'px');
+            spark.style.setProperty('--fly-delay',(i*29)+'ms');
+            spark.style.setProperty('--fly-duration',(540+(i%3)*55)+'ms');
+            timeFlyLayer.appendChild(spark);
+            spark.addEventListener('animationend',()=>spark.remove(),{once:true});
+            setTimeout(()=>spark.remove(),1100); // Safariでanimationendが来ない場合の保険
+        }
+        const label=document.createElement('span');
+        label.className='time-bonus-label';
+        label.textContent='+'+(recoveredMs/1000).toFixed(1)+'秒';
+        label.style.setProperty('--lx',(sx+12)+'px');
+        label.style.setProperty('--ly',(sy-29)+'px');
+        timeFlyLayer.appendChild(label);
+        label.addEventListener('animationend',()=>label.remove(),{once:true});
+        setTimeout(()=>label.remove(),1100);
+    }
     function updateFinalHud(){
         ui.finalTime.textContent=(finalTimeLeft/1000).toFixed(1)+'秒';
         ui.finalFill.style.width=(100*finalTimeLeft/FINAL_MAX_TIME)+'%';
@@ -621,6 +668,7 @@
         Composite.add(engine.world,Bodies.rectangle(W/2,0,W+70,20,{
             isStatic:true,restitution:.98,friction:0
         }));
+        clearTimeEnergy();
         finalGameActive=true;finalIntroLeft=FINAL_INTRO_TIME;
         finalTimeLeft=FINAL_MAX_TIME;finalKills=0;finalHitMarks=[];
         spawnFinalBall(0,W/2,H*.53,{x:1.55,y:-.82});
@@ -662,7 +710,9 @@
         if(b.game.hp>0)return true;
         const bx=b.position.x,by=b.position.y;
         removeBall(b);finalKills++;
+        const timeBefore=finalTimeLeft;
         finalTimeLeft=Math.min(FINAL_MAX_TIME,finalTimeLeft+def.bonus);
+        const recovered=finalTimeLeft-timeBefore;
         points(100*(stage+1));
         if(def.children){
             const child=FINAL_STAGES[stage+1];
@@ -686,6 +736,7 @@
         }
         if(finalHitMarks.length>18)finalHitMarks.splice(0,finalHitMarks.length-18);
         updateFinalHud();
+        flyTimeEnergy(bx,by,recovered,stage);
         if(!balls.length)end('win');
         return true;
     }
@@ -882,6 +933,7 @@
     }
     function reset() {
         stopSpeech()
+        clearTimeEnergy();
         clearNotice();
         balls=[];pending=[];particles=[];impacts=[];score=0;throwGauge=0;strikeGauge=0;strikeDamage=1;nextLevel=randomLevel();
         activePlacements=[];dropReady=true;
