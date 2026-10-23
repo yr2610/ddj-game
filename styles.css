@@ -409,3 +409,98 @@ footer {color:#a18a85}
 @keyframes final-urgent {from{opacity:.7}to{opacity:1}}
 @media(max-height:700px){.final-panel {padding:7px 10px}.final-top span{font-size:18px}.final-top strong{font-size:18px}.final-meter{height:13px;margin:5px 0}}
 @media(prefers-reduced-motion:reduce){.final-panel.urgent .final-top strong{animation:none}}
+
+
+/* タイトルは遊び方よりキャッチコピーを主役に。小さい画面でも2行で大きく読める。 */
+.overlay-panel .panel-slogan{
+    display:grid;
+    gap:1px;
+    margin:5px 0 7px;
+    padding:8px 4px 9px;
+    color:#ffe1a3;
+    font-family:var(--brush-font);
+    font-size:clamp(16px,4.8vw,21px);
+    font-weight:700;
+    line-height:1.28;
+    letter-spacing:-.035em;
+    white-space:normal;
+    border-top:1px solid #e9b36b85;
+    border-bottom:1px solid #e9b36b85;
+    background:linear-gradient(90deg,#8c312300,#ad371e35 48%,#8c312300);
+    text-shadow:2px 3px 0 #24080d,0 0 11px #ed8f4c90;
+}
+.overlay-panel .panel-slogan span{display:block;white-space:nowrap}
+.overlay-panel .panel-slogan strong{
+    font-size:1.5em;
+    color:#fff6cc;
+    font-weight:900;
+    text-shadow:2px 3px 0 #781e21,0 0 8px #f3a83a,0 0 18px #e86c2b;
+}
+.howto{margin:10px 0 0}
+.howto-toggle{
+    display:block;
+    padding:7px 11px;
+    border:1px solid #b38a5e;
+    border-radius:5px;
+    color:#f6dba7;
+    font-family:var(--brush-font);
+    font-size:16px;
+    cursor:pointer;
+    user-select:none;
+    background:linear-gradient(180deg,#3c3540,#241b27);
+    box-shadow:inset 0 1px 0 #ffe1aa26;
+}
+.howto-toggle::-webkit-details-marker{display:none}
+.howto-toggle::marker{content:""}
+.howto-toggle span{font-family:system-ui,sans-serif;font-size:11px;margin-left:6px;display:inline-block;transition:transform .18s}
+.howto[open] .howto-toggle span{transform:rotate(180deg)}
+.howto-toggle:focus-visible{outline:3px solid #f5c267;outline-offset:2px}
+.howto .rule-card{margin-top:7px;text-align:left;line-height:1.62;font-size:12px}
+@media(max-width:340px){
+    .overlay-panel .panel-slogan{font-size:15px;padding:5px 2px 6px}
+    .overlay-panel .panel-slogan strong{font-size:1.38em}
+}
+
+/* 撃破時、倒した玉から最終戦ゲージの増加先まで光が吸い込まれる。
+   フィールド外のゲージまで届くよう、viewport固定の独立レイヤーを使用。 */
+.time-fly-layer{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:15}
+.time-energy{
+    position:absolute;left:0;top:0;width:11px;height:11px;
+    border-radius:50%;
+    background:radial-gradient(circle,#fff 0%,#fff7b4 30%,#e6bd58 57%,#fff4a000 78%);
+    box-shadow:0 0 5px 2px #fffbd9,0 0 15px 5px #eeb74ab0,0 0 25px 8px #ea792866;
+    will-change:transform,opacity;
+    animation:time-energy-flight var(--fly-duration,690ms) cubic-bezier(.25,.2,.17,1) var(--fly-delay,0ms) both;
+}
+.time-energy::after{
+    content:"";position:absolute;left:-9px;top:4px;width:27px;height:3px;
+    background:linear-gradient(90deg,transparent,#fff4aa 50%,transparent);
+    transform:rotate(35deg);
+    filter:blur(.6px);
+}
+.time-energy--core{width:16px;height:16px;box-shadow:0 0 6px 3px #fff,0 0 18px 8px #ffdc65,0 0 34px 12px #edaa4b80}
+@keyframes time-energy-flight{
+    0%{transform:translate3d(var(--sx),var(--sy),0) scale(.35);opacity:0}
+    11%{opacity:1}
+    42%{transform:translate3d(var(--mx),var(--my),0) scale(1.35);opacity:1}
+    86%{transform:translate3d(var(--ex),var(--ey),0) scale(.8);opacity:1}
+    100%{transform:translate3d(var(--ex),var(--ey),0) scale(.08);opacity:0}
+}
+.time-bonus-label{
+    position:absolute;top:0;left:0;
+    font-family:var(--brush-font);font-size:17px;font-weight:900;
+    color:#fff9c7;white-space:nowrap;
+    text-shadow:0 2px 2px #401b0e,0 0 7px #ffc03b,0 0 13px #eb7a22;
+    animation:time-bonus-rise 710ms ease-out both;
+}
+@keyframes time-bonus-rise{
+    0%{transform:translate3d(var(--lx),var(--ly),0) scale(.72);opacity:0}
+    18%{opacity:1}
+    75%{opacity:1}
+    100%{transform:translate3d(var(--lx),calc(var(--ly) - 29px),0) scale(1.06);opacity:0}
+}
+@media(prefers-reduced-motion:reduce){
+    .time-energy{animation-duration:180ms}
+    .time-bonus-label{animation-duration:260ms}
+    .howto-toggle span{transition:none}
+}
