@@ -1211,15 +1211,21 @@
         if(shake>0)shake*=.72;
     }
     function round(x,y,w,h,r) {ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
-    // 夕焼けの岩山と滝を一度読み込み、Canvas上へ描画。暗めの被せで玉を見やすくする。
-    // 画像が読めない場合は単色の背景にフォールバック。
+    // 元の滝の絵を活かし、日本の山寺の意匠だけを透過レイヤーで重ねる。
+    // 追加画像が読めなくても従来の背景描画は維持する。
     const scenery=new window.Image();
     scenery.decoding='async';
     scenery.src='./assets/waterfall-sunset.webp?v=20261021-waterfall1';
+    const japaneseScenery=new window.Image();
+    japaneseScenery.decoding='async';
+    japaneseScenery.src='./assets/japanese-garden-overlay.svg?v=20261023-wafuu1';
     function bg(){
         ctx.fillStyle='#433444';ctx.fillRect(0,0,W,H);
-        if(scenery.complete&&scenery.naturalWidth>0){
-            ctx.drawImage(scenery,0,0,W,H);
+        const hasScenery=scenery.complete&&scenery.naturalWidth>0;
+        const hasJapaneseScenery=japaneseScenery.complete&&japaneseScenery.naturalWidth>0;
+        if(hasScenery)ctx.drawImage(scenery,0,0,W,H);
+        if(hasJapaneseScenery)ctx.drawImage(japaneseScenery,0,0,W,H);
+        if(hasScenery||hasJapaneseScenery){
             ctx.fillStyle='rgba(12,10,18,.34)';ctx.fillRect(0,0,W,H);
         }
         if(!finalGameActive){
