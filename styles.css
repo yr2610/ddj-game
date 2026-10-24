@@ -565,3 +565,30 @@ footer {color:#a18a85}
 @media(max-height:700px){
     .overlay:has(.game-title) .overlay-panel{padding:8px 10px 9px}
 }
+
+/* 勝負終了の「そこまで！」を中央で大きく叩きつける宣告。
+   小型スマホではJS側で文字幅を実測し、左右にはみ出しすぎないよう調整する。 */
+.alert.end-call{
+    top:40%;
+    width:max-content;
+    max-width:none;
+    color:#fff0b0;
+    font-family:var(--brush-font);
+    font-weight:900;
+    letter-spacing:-.075em;
+    -webkit-text-stroke:2px #4f1119;
+    text-shadow:3px 5px 0 #210b11,0 0 14px #ef4c22,0 0 27px #ef9f4f;
+    transition:none;
+}
+.alert.end-call.active{
+    animation:end-call-slam 500ms cubic-bezier(.2,.7,.25,1) both;
+}
+@keyframes end-call-slam{
+    0%{opacity:0;transform:translate(-50%,-5%) scale(1.55)}
+    35%{opacity:1;transform:translate(-50%,0) scale(.91)}
+    70%{opacity:1;transform:translate(-50%,0) scale(1.05)}
+    100%{opacity:1;transform:translate(-50%,0) scale(1)}
+}
+@media(prefers-reduced-motion:reduce){
+    .alert.end-call.active{animation:none;opacity:1;transform:translate(-50%,0)}
+}

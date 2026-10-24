@@ -70,7 +70,7 @@
     const VOICE_FILES = ['player-pain-1.wav','player-pain-2.wav','player-death.wav'];
     const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
-    let engine, balls=[], pending=[], particles=[], impacts=[];
+    let engine, balls=[], pending=[], particles=[], impacts=[], successMarks=[];
     let mode='menu', score=0, best=0, throwGauge=0, strikeGauge=0, strikeDamage=1, nextLevel=0, pointerX=180;
     let currentTime=0, lastDrop=-5000, dropBlockedUntil=0, dangerSince=null, strikeEnds=0, throwEnds=0;
     let rushEndPauseMs=0, rushEndKind=null;
@@ -419,7 +419,7 @@
     function clearNotice() {
         if(alertTimer){clearTimeout(alertTimer);alertTimer=null}
         rushReadyQueue=[];
-        ui.alert.classList.remove('active');
+        ui.alert.classList.remove('active','end-call');
         ui.alert.textContent='';
     }
     // 技の成立宣告と同じ大きさ・同じ場所にラッシュ使用可能を通知する。
@@ -449,11 +449,24 @@
         if(textWidth>allowedWidth)
             ui.alert.style.fontSize=(baseSize*allowedWidth/textWidth).toFixed(1)+'px';
     }
+    // 「そこまで！」は盤面中央を使う大きな宣告。小さい画面では文字幅を実測して収める。
+    function fitEndCallNotice(){
+        const fieldWidth=canvas.getBoundingClientRect().width||W;
+        const baseSize=Math.min(84,Math.max(40,fieldWidth*.21));
+        ui.alert.style.fontSize=baseSize.toFixed(1)+'px';
+        const textWidth=ui.alert.scrollWidth||baseSize*[...ui.alert.textContent].length;
+        const allowedWidth=fieldWidth*.91;
+        if(textWidth>allowedWidth)
+            ui.alert.style.fontSize=(baseSize*allowedWidth/textWidth).toFixed(1)+'px';
+    }
     function notify(s,ms=850) {
         if(alertTimer){clearTimeout(alertTimer);alertTimer=null}
         ui.alert.textContent=s;
         ui.alert.style.fontSize='';
-        if(/^(打撃|投げ)ラッシュOK！$/.test(s))fitRushReadyNotice();
+        const endCall=/^そこまで[！!]+$/.test(s);
+        ui.alert.classList.toggle('end-call',endCall);
+        if(endCall)fitEndCallNotice();
+        else if(/^(打撃|投げ)ラッシュOK！$/.test(s))fitRushReadyNotice();
         ui.alert.classList.add('active');
         alertTimer=setTimeout(()=>{
             ui.alert.classList.remove('active');
@@ -669,6 +682,7 @@
             isStatic:true,restitution:.98,friction:0
         }));
         clearTimeEnergy();
+        successMarks=[];
         finalGameActive=true;finalIntroLeft=FINAL_INTRO_TIME;
         finalTimeLeft=FINAL_MAX_TIME;finalKills=0;finalHitMarks=[];
         spawnFinalBall(0,W/2,H*.53,{x:1.55,y:-.82});
@@ -858,7 +872,20 @@
         }
         points(TIERS[special.fromLevel].points);
         const name=TIERS[b.game.level].name;
-        notify(name+'！！',800);speak(name+'！',true);
+        // 成立宣告は画面上部の固定通知を使わず、成立した玉の少し上へ表示する。
+        // 連打指示がまだ出ていた場合のみ消し、ラッシュOK通知の待ち行列は残す。
+        if(ui.alert.textContent===name+'を叩け！'){
+            if(alertTimer){clearTimeout(alertTimer);alertTimer=null}
+            ui.alert.classList.remove('active');
+            ui.alert.textContent='';
+            if(rushReadyQueue.length)showNextRushReady();
+        }
+        successMarks.push({
+            x:b.position.x,y:b.position.y-b.circleRadius-12,
+            text:name+'！！',level:b.game.level,life:950,maxLife:950
+        });
+        if(successMarks.length>9)successMarks.splice(0,successMarks.length-9);
+        speak(name+'！',true);
         audio.fx('finish',b.game.level);
         sparkle(b.position.x,b.position.y,'#fff3ba',18);
         impactSpark(b.position.x,b.position.y,b.game.level,'merge');
@@ -935,7 +962,7 @@
         stopSpeech()
         clearTimeEnergy();
         clearNotice();
-        balls=[];pending=[];particles=[];impacts=[];score=0;throwGauge=0;strikeGauge=0;strikeDamage=1;nextLevel=randomLevel();
+        balls=[];pending=[];particles=[];impacts=[];successMarks=[];score=0;throwGauge=0;strikeGauge=0;strikeDamage=1;nextLevel=randomLevel();
         activePlacements=[];dropReady=true;
         pointerX=W/2;pointer=null;dragged=null;dangerSince=null;
         currentTime=0;lastDrop=-5000;dropBlockedUntil=0;strikeEnds=0;throwEnds=0;lastMergeVoice=-10000;
@@ -1103,7 +1130,7 @@
             }},1450);
             return;
         }
-        mode='ended';updateHud();audio.fx('end');speak('そこまで！',true);notify('そこまで！！',1350);
+        mode='ended';updateHud();audio.fx('end');speak('そこまで！',true);notify('そこまで！',1650);
         const rank=score>=25000?'塾長級':score>=14000?'五段':score>=8000?'三段':
             score>=5000?'初段':score>=2500?'一級':score>=1000?'五級':'十級';
         ui.panel.innerHTML='<div class="panel-kicker">一本勝負・勝負あり</div>'+
@@ -1120,7 +1147,7 @@
                 clearNotice(); // 「そこまで！」は一瞬の演出のみ。リザルトに持ち越さない。
                 ui.overlay.classList.remove('hidden');
             }
-        },1250);
+        },1720);
     }
     async function share(rank) {
         const msg='大道塾で '+score.toLocaleString('ja-JP')+'点！ '+rank+'認定！ セイッ！ ヤーッ！';
@@ -1208,6 +1235,8 @@
         particles=particles.filter(p=>p.life>0);
         impacts.forEach(p=>p.life--);
         impacts=impacts.filter(p=>p.life>0);
+        successMarks.forEach(mark=>mark.life-=dt);
+        successMarks=successMarks.filter(mark=>mark.life>0);
         if(shake>0)shake*=.72;
     }
     function round(x,y,w,h,r) {ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
@@ -1255,17 +1284,43 @@
         ctx.fillStyle=black?'#f4ebe1':'#1d2b35';
         // 大玉ほど筆文字がしっかり主張するように拡大。
         // 空道は2字、大道塾は3字なので、文字数に応じて高さを調整する。
-        const nameSize=pending?Math.min(r*.7,32):
+        const nameSize=pending?(lv===6?Math.min(r*.74,58):Math.min(r*.7,32)):
             lv===3?Math.min(r*1.3,52):    // 投：従来40px→52px
             lv===5?Math.min(r*1.125,72): // 極：直径128pxの玉に合わせて72px
+            lv===6?Math.min(r*.95,76):   // 一本：直径158pxの玉に釣り合う大きさへ
             lv===7?Math.min(r*.85,82):
             lv===8?Math.min(r*.60,72):Math.min(r*1.20,40);
         ctx.font=nameSize+'px "Yuji Boku","Yu Mincho",serif';
         const name=black?SPECIAL[lv].blackName:d.name;
         ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.fillText(name,0,pending?-r*.28:black?-r*.11:1,r*1.75);
+        ctx.fillText(name,0,pending?-r*.28:black?-r*.11:1,lv===6?r*1.9:r*1.75);
         if(hits&&!black){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText(hits+'/'+(2**lv),0,r*.73)}
         ctx.restore();
+    }
+    // 成立した玉の「少し上」で短い筆文字が叩きつけられ、浮いて消える。
+    // ゲーム座標を保存するので、玉が移動・合体しても演出位置はずれない。
+    function drawSuccessMarks(){
+        for(const mark of successMarks){
+            const t=1-mark.life/mark.maxLife;
+            const fade=t<.12?t/.12:t>.73?(1-t)/.27:1;
+            const pop=t<.17?.55+.61*(t/.17):1.04-.04*Math.min((t-.17)/.25,1);
+            const size=mark.level===6?73:mark.level===4?62:56;
+            ctx.save();
+            ctx.font='900 '+size+'px "Yuji Boku","Yu Mincho",serif';
+            ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+            const width=Math.min(W-22,ctx.measureText(mark.text).width);
+            const x=clamp(mark.x,width/2+11,W-width/2-11);
+            const y=clamp(mark.y-16*t,38,H-45);
+            ctx.translate(x,y);ctx.scale(pop,pop);
+            ctx.globalAlpha=clamp(fade,0,1);
+            ctx.shadowColor='#e65f2c';ctx.shadowBlur=14;
+            ctx.strokeStyle='#2a0e16';ctx.lineWidth=13;
+            ctx.strokeText(mark.text,0,0,W-24);
+            ctx.shadowBlur=0;ctx.strokeStyle='#bf442e';ctx.lineWidth=5;
+            ctx.strokeText(mark.text,0,0,W-24);
+            ctx.fillStyle='#fff1b5';ctx.fillText(mark.text,0,0,W-24);
+            ctx.restore();
+        }
     }
     // 「デュクシ！」に合わせた、短い白黄の8方向星型スパークと赤橙の衝撃線。
     // 全てCanvas描画なので追加の画像素材や通信は不要。
@@ -1497,6 +1552,7 @@
             ctx.shadowColor='#1c090e';ctx.shadowBlur=4;
             ctx.fillText('危険！ 残り '+Math.ceil((DANGER_GRACE-(currentTime-dangerSince))/1000)+' 秒',W/2,19);
         }
+        drawSuccessMarks();
         ctx.restore();
         if(finalGameActive)drawFinalOverlay();
         drawRushEnd();
@@ -1506,7 +1562,8 @@
         canvas.width=Math.round(W*d);canvas.height=Math.round(H*d);
         ctx.setTransform(d,0,0,d,0,0);
         // 画面回転やウィンドウサイズ変更時もラッシュOKの幅を再計算。
-        if(/^(打撃|投げ)ラッシュOK！$/.test(ui.alert.textContent))
+        if(ui.alert.classList.contains('end-call'))fitEndCallNotice();
+        else if(/^(打撃|投げ)ラッシュOK！$/.test(ui.alert.textContent))
             fitRushReadyNotice();
     }
     function coord(e){
