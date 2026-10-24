@@ -1304,7 +1304,11 @@
             const t=1-mark.life/mark.maxLife;
             const fade=t<.12?t/.12:t>.73?(1-t)/.27:1;
             const pop=t<.17?.55+.61*(t/.17):1.04-.04*Math.min((t-.17)/.25,1);
-            const size=mark.level===6?73:mark.level===4?62:56;
+            // 文字数の多い「技あり」が「一本」と同格に見えないよう
+            // 文字サイズと縁取り・光量を段階化する（一本の大きさは維持）。
+            const size=mark.level===6?73:mark.level===4?54:43;
+            const outline=mark.level===6?13:mark.level===4?10:8;
+            const glow=mark.level===6?14:mark.level===4?10:6;
             ctx.save();
             ctx.font='900 '+size+'px "Yuji Boku","Yu Mincho",serif';
             ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
@@ -1313,12 +1317,14 @@
             const y=clamp(mark.y-16*t,38,H-45);
             ctx.translate(x,y);ctx.scale(pop,pop);
             ctx.globalAlpha=clamp(fade,0,1);
-            ctx.shadowColor='#e65f2c';ctx.shadowBlur=14;
-            ctx.strokeStyle='#2a0e16';ctx.lineWidth=13;
+            ctx.shadowColor='#e65f2c';ctx.shadowBlur=glow;
+            ctx.strokeStyle='#2a0e16';ctx.lineWidth=outline;
             ctx.strokeText(mark.text,0,0,W-24);
-            ctx.shadowBlur=0;ctx.strokeStyle='#bf442e';ctx.lineWidth=5;
+            ctx.shadowBlur=0;ctx.strokeStyle='#bf442e';
+            ctx.lineWidth=mark.level===6?5:mark.level===4?4:3;
             ctx.strokeText(mark.text,0,0,W-24);
-            ctx.fillStyle='#fff1b5';ctx.fillText(mark.text,0,0,W-24);
+            ctx.fillStyle=mark.level===6?'#fff1b5':mark.level===4?'#ffe4ac':'#f9daae';
+            ctx.fillText(mark.text,0,0,W-24);
             ctx.restore();
         }
     }
