@@ -942,7 +942,8 @@
         }
         successMarks.push({
             x:b.position.x,y:b.position.y-b.circleRadius-12,
-            text:name+'！！',level:b.game.level,life:950,maxLife:950
+            text:name+(b.game.level===2?'！':b.game.level===4?'！！':'！！！'),
+            level:b.game.level,life:950,maxLife:950
         });
         if(successMarks.length>9)successMarks.splice(0,successMarks.length-9);
         speak(name+'！',true);
@@ -1321,8 +1322,43 @@
         }
         ctx.fillStyle='#2b2526b8';ctx.fillRect(0,FLOOR,W,H-FLOOR);
     }
+    // 描き直した2D格闘ボール4種と、成立時の筆文字爆発演出3種を
+    // 1枚の透過WebPへまとめた。読込失敗時は従来のCanvas描画を維持する。
+    const combatArt=new window.Image();
+    combatArt.decoding='async';
+    combatArt.src='./assets/combat-art-atlas.png?v=20261025-finalart1';
+    const BALL_ART={
+        0:[5,5,80,80],1:[97,5,80,80],3:[189,5,80,80],5:[281,5,80,80]
+    };
+    const SUCCESS_ART={
+        2:[5,94,107,81,125],4:[122,94,112,86,180],6:[244,94,116,87,252]
+    };
+    // 描画座標は元の404×185 atlas設計値。軽量化した320×148 PNGへ換算。
+    const ART_SX=320/404,ART_SY=148/185;
+    function hasCombatArt(){
+        return combatArt.complete&&combatArt.naturalWidth===320&&combatArt.naturalHeight===148;
+    }
     function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false,warningAlpha=0) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
+        const art=BALL_ART[lv];
+        if(art&&!black&&hasCombatArt()){
+            ctx.shadowColor='#2b27233d';ctx.shadowBlur=7;ctx.shadowOffsetY=3;
+            ctx.drawImage(combatArt,
+                art[0]*ART_SX,art[1]*ART_SY,art[2]*ART_SX,art[3]*ART_SY,
+                -r,-r,r*2,r*2);
+            ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+            if(flash>0){
+                ctx.beginPath();ctx.arc(0,0,r-1,0,Math.PI*2);
+                ctx.fillStyle='rgba(255,248,195,'+(Math.min(.40,flash*.025))+')';ctx.fill();
+            }
+            if(hits){
+                ctx.fillStyle='#fff1c9';ctx.strokeStyle='#241016';ctx.lineWidth=3;
+                ctx.font='900 10px system-ui';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+                const count=hits+'/'+(2**lv);
+                ctx.strokeText(count,0,r*.74);ctx.fillText(count,0,r*.74);
+            }
+            ctx.restore();return;
+        }
         ctx.shadowColor='#2b27233d';ctx.shadowBlur=7;ctx.shadowOffsetY=4;
         ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
         const g=ctx.createRadialGradient(-r*.32,-r*.35,r*.1,0,0,r);
@@ -1366,25 +1402,36 @@
             const pop=t<.17?.55+.61*(t/.17):1.04-.04*Math.min((t-.17)/.25,1);
             // 文字数の多い「技あり」が「一本」と同格に見えないよう
             // 文字サイズと縁取り・光量を段階化する（一本の大きさは維持）。
+            const asset=SUCCESS_ART[mark.level];
             const size=mark.level===6?73:mark.level===4?54:43;
-            const outline=mark.level===6?13:mark.level===4?10:8;
-            const glow=mark.level===6?14:mark.level===4?10:6;
             ctx.save();
-            ctx.font='900 '+size+'px "Yuji Boku","Yu Mincho",serif';
-            ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
-            const width=Math.min(W-22,ctx.measureText(mark.text).width);
-            const x=clamp(mark.x,width/2+11,W-width/2-11);
-            const y=clamp(mark.y-16*t,38,H-45);
-            ctx.translate(x,y);ctx.scale(pop,pop);
-            ctx.globalAlpha=clamp(fade,0,1);
-            ctx.shadowColor='#e65f2c';ctx.shadowBlur=glow;
-            ctx.strokeStyle='#2a0e16';ctx.lineWidth=outline;
-            ctx.strokeText(mark.text,0,0,W-24);
-            ctx.shadowBlur=0;ctx.strokeStyle='#bf442e';
-            ctx.lineWidth=mark.level===6?5:mark.level===4?4:3;
-            ctx.strokeText(mark.text,0,0,W-24);
-            ctx.fillStyle=mark.level===6?'#fff1b5':mark.level===4?'#ffe4ac':'#f9daae';
-            ctx.fillText(mark.text,0,0,W-24);
+            if(asset&&hasCombatArt()){
+                const [sx,sy,sw,sh,width]=asset;
+                const height=width*sh/sw;
+                const x=clamp(mark.x,width*.47,W-width*.47);
+                const y=clamp(mark.y-16*t,height*.36,H-height*.36);
+                ctx.translate(x,y);ctx.scale(pop,pop);
+                ctx.globalAlpha=clamp(fade,0,1);
+                ctx.drawImage(combatArt,sx*ART_SX,sy*ART_SY,sw*ART_SX,sh*ART_SY,
+                    -width*.5,-height*.5,width,height);
+            }else{
+                // 画像が使えなくても「効果！／技あり！！／一本！！！」を
+                // 従来どおり成立玉の上に表示し、ゲームを止めない。
+                ctx.font='900 '+size+'px "Yuji Boku","Yu Mincho",serif';
+                ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+                const width=Math.min(W-22,ctx.measureText(mark.text).width);
+                const x=clamp(mark.x,width/2+11,W-width/2-11);
+                const y=clamp(mark.y-16*t,38,H-45);
+                ctx.translate(x,y);ctx.scale(pop,pop);
+                ctx.globalAlpha=clamp(fade,0,1);
+                ctx.shadowColor='#e65f2c';ctx.shadowBlur=mark.level===6?14:mark.level===4?10:6;
+                ctx.strokeStyle='#2a0e16';ctx.lineWidth=mark.level===6?13:mark.level===4?10:8;
+                ctx.strokeText(mark.text,0,0,W-24);
+                ctx.shadowBlur=0;ctx.strokeStyle='#bf442e';
+                ctx.lineWidth=mark.level===6?5:mark.level===4?4:3;
+                ctx.strokeText(mark.text,0,0,W-24);
+                ctx.fillStyle='#fff1b5';ctx.fillText(mark.text,0,0,W-24);
+            }
             ctx.restore();
         }
     }
