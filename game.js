@@ -85,6 +85,7 @@
     const audio = {
         ctx:null, next:0, index:0,noiseBuffer:null,iosUnlocked:false,
         samples:{},sampleLoadStarted:false,sampleTurn:0,fxOutput:null,
+        musicBuffers:{},musicLoadStarted:false,musicNode:null,musicName:null,
         voiceBuffers:null,voiceLoadStarted:false,pendingVoice:null,voiceFailed:false,voiceIndex:0,
         async loadVoices() {
             if(this.voiceLoadStarted||!MOBILE_VOICE||!this.ctx)return;
@@ -105,22 +106,68 @@
                 ui.voice.textContent='声 読込失敗';
             }
         },
-        // KenneyのCC0音源を同梱して再生。Vorbis未対応Safari等は旧Web Audio合成音へ退避。
+        // オリジナルPCMを優先。WAVは旧iOS Safariでも再生可能。
+        // 取得失敗時のみ従来のKenney CC0 Ogg → 旧Web Audio合成音へ退避する。
         async loadSamples(){
             if(this.sampleLoadStarted||!this.ctx)return;
             this.sampleLoadStarted=true;
-            const names=['hit-light','hit-alt','hit-heavy','hit-heavy2','break','split','merge'];
+            const names=['hit-light','hit-alt','hit-heavy','hit-heavy2','break',
+                'split','merge','finish','drop','rush','end','win'];
+            const legacy=new Set(['hit-light','hit-alt','hit-heavy','hit-heavy2',
+                'break','split','merge']);
             await Promise.all(names.map(async name=>{
-                try{
-                    const response=await fetch('./assets/audio/'+name+'.ogg?v=arcade1');
-                    if(!response.ok)throw Error('HTTP '+response.status);
-                    const buffer=await this.ctx.decodeAudioData(await response.arrayBuffer());
-                    this.samples[name]=buffer;
-                }catch(e){
-                    // 一部のiOS/SafariではOgg Vorbisが未対応。全音声が止まることはない。
-                    console.warn('サンプル音声を使用できません（合成音へフォールバック）:',name,e);
+                const formats=['wav',...(legacy.has(name)?['ogg']:[])];
+                for(const ext of formats){
+                    try{
+                        const ver=ext==='wav'?'20261024-audio2':'arcade1';
+                        const response=await fetch('./assets/audio/'+name+'.'+ext+'?v='+ver);
+                        if(!response.ok)throw Error('HTTP '+response.status);
+                        this.samples[name]=await this.ctx.decodeAudioData(await response.arrayBuffer());
+                        return;
+                    }catch(e){
+                        if(ext===formats[formats.length-1])
+                            console.warn('SEは合成音へ退避:',name,e);
+                    }
                 }
             }));
+        },
+        // 通常戦と最終戦を別アレンジした、ループ可能なオリジナルPCM BGM。
+        // 読み込めなければ下の既存Web Audio BGMを維持する。
+        async loadMusic(){
+            if(this.musicLoadStarted||!this.ctx)return;
+            this.musicLoadStarted=true;
+            await Promise.all(['normal','final'].map(async name=>{
+                try{
+                    const response=await fetch('./assets/audio/music-'+name+'.wav?v=20261024-audio2');
+                    if(!response.ok)throw Error('HTTP '+response.status);
+                    this.musicBuffers[name]=await this.ctx.decodeAudioData(await response.arrayBuffer());
+                }catch(e){
+                    console.warn('PCM BGMを使用できません（合成BGMへ退避）:',name,e);
+                }
+            }));
+        },
+        syncMusic(name){
+            if(this.musicName===name)return;
+            const a=this.ctx, now=a.currentTime;
+            if(this.musicNode){
+                const old=this.musicNode;
+                old.gain.gain.cancelScheduledValues(now);
+                old.gain.gain.setValueAtTime(old.gain.gain.value,now);
+                old.gain.gain.linearRampToValueAtTime(.0001,now+.16);
+                try{old.source.stop(now+.18)}catch(_){}
+                this.musicNode=null;
+            }
+            this.musicName=name;
+            if(!name||!this.musicBuffers[name])return;
+            const source=a.createBufferSource(),gain=a.createGain();
+            source.buffer=this.musicBuffers[name];
+            source.loop=true;
+            gain.gain.setValueAtTime(.0001,now);
+            gain.gain.linearRampToValueAtTime(name==='final'?.31:.36,now+.18);
+            source.connect(gain);
+            gain.connect(this.fxOutput||a.destination);
+            source.start(now);
+            this.musicNode={source,gain};
         },
         playSample(name,volume=.35,rate=1,time=null){
             const buffer=this.samples[name];
@@ -191,6 +238,7 @@
             }
             this.resume();
             this.loadSamples();
+            this.loadMusic();
             this.loadVoices();
             this.next=Math.max(this.next,this.ctx.currentTime+.02);
         },
@@ -291,12 +339,14 @@
                 }
             }
             if(name==='finish'){
+                if(this.playSample('finish',.47,level>=6?.88:level>=4?1:1.08))return;
                 if(this.playSample('hit-heavy',.40,.94))
                     this.playSample('merge',.23,1.05,t+.04);
                 else this.impact(Math.max(4,level),'break');
                 return;
             }
             if(name==='win'){
+                if(this.playSample('win',.45))return;
                 this.playSample('hit-heavy2',.42,.85);
                 this.playSample('merge',.30,1.0,t+.045);
                 // 勝利専用の短いファンファーレ。PC・スマホ共通。
@@ -306,6 +356,9 @@
                 });
                 return;
             }
+            if(name==='drop'&&this.playSample('drop',.32))return;
+            if(name==='rush'&&this.playSample('rush',.47))return;
+            if(name==='end'&&this.playSample('end',.48))return;
             if(name==='drop')this.tone(160,.09,'triangle',.08,t,105);
             if(name==='merge')this.impact(level,'merge');
             if(name==='hit')this.impact(level,'hit');
@@ -322,6 +375,13 @@
             if(name==='end')[0,.17,.34].forEach((d,i)=>this.tone(320-i*60,.32,'triangle',.15,t+d));
         },
         music() {
+            if(this.ctx&&this.musicBuffers.normal&&this.musicBuffers.final){
+                const name=!muted&&this.ctx.state==='running'?
+                    (mode==='final'?'final':
+                        ['playing','strike','throw'].includes(mode)?'normal':null):null;
+                this.syncMusic(name);
+                return;
+            }
             // 4小節の短調リフ。従来の16音単純ループを、ドラム・ベース・
             // 2声のブラス風スタブ・主旋律へ分離。最後の戦いはテンポアップ。
             if(muted||!this.ctx||!['playing','strike','throw','final'].includes(mode)||
