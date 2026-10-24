@@ -522,3 +522,46 @@ footer {color:#a18a85}
 }
 .howto .rule-unofficial{display:block;margin-top:4px;font-size:10px;color:#dbc6ab;line-height:1.5}
 @media(max-height:700px){.panel-disclaimer{font-size:9px;margin-top:6px;padding-top:5px}}
+
+/* タイトル専用：木造道場と富士を描いた新規背景。
+   既存の硬派な朱・墨・金のロゴとボタンは維持し、写真風の柔らかさを
+   暗い墨色で引き締める。結果パネルやゲーム本編の背景は変更しない。 */
+.overlay:has(.game-title){
+    background:
+        linear-gradient(180deg,rgba(10,8,12,.18),rgba(13,9,13,.09) 43%,rgba(10,8,12,.32)),
+        url("./assets/title-dojo.webp?v=20261024-title1") center / 100% 100% no-repeat,
+        #261c19;
+    backdrop-filter:none;
+}
+.overlay:has(.game-title) .overlay-panel{
+    width:min(100%,342px);
+    border:2px solid #b58b58;
+    background:linear-gradient(180deg,
+        rgba(11,9,13,.83) 0%,
+        rgba(15,12,17,.67) 25%,
+        rgba(20,12,16,.38) 43%,
+        rgba(20,11,15,.56) 65%,
+        rgba(10,9,13,.88) 100%);
+    box-shadow:
+        inset 0 0 0 1px rgba(248,209,143,.23),
+        inset 0 0 24px rgba(0,0,0,.28),
+        0 9px 26px rgba(0,0,0,.55);
+}
+.overlay:has(.game-title) .overlay-panel::before{
+    background:repeating-conic-gradient(from 1deg at 50% 53%,#ab342313 0deg 5deg,transparent 5deg 15deg);
+    opacity:.24;
+}
+.overlay:has(.game-title) .panel-slogan{
+    background:linear-gradient(90deg,rgba(28,15,16,.5),rgba(78,23,21,.44),rgba(28,15,16,.5));
+    text-shadow:2px 3px 0 #180b0d,0 0 10px rgba(0,0,0,.93);
+}
+.overlay:has(.game-title) .panel-disclaimer{
+    background:rgba(12,10,13,.48);
+    border-top-color:#cba66e82;
+    color:#f3ddc6;
+    text-shadow:0 1px 2px #080809;
+}
+/* アクセシビリティ・小型スマホでの読みやすさを保つ */
+@media(max-height:700px){
+    .overlay:has(.game-title) .overlay-panel{padding:8px 10px 9px}
+}
