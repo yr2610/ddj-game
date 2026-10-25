@@ -1382,12 +1382,31 @@
         return !!image&&image.complete&&image.naturalWidth===192&&image.naturalHeight===192;
     }
     function drawFinalBallAsset(index,r){
-        // 個別スプライトの描画中心は(96,96)。アトラスの切り出し座標は使わない。
+        // 技あり(index 4)と一本(index 6)だけ、外周と絵柄の干渉を抑える。
+        // 円の物理半径・座標は変えない。その他10種類は従来と同じ描画。
+        const inset=index===4?.08:index===6?.10:0;
+        const imageRadius=r*(1-inset);
         ctx.save();
         ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
         ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.clip();
-        ctx.drawImage(ballSprites[index],-r,-r,r*2,r*2);
+        if(inset>0){
+            // 縮めた絵と当たり判定円の隙間を透過させず、暗い輪郭として残す。
+            ctx.fillStyle=index===4?'#201225':'#211117';
+            ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();
+        }
+        ctx.drawImage(ballSprites[index],-imageRadius,-imageRadius,imageRadius*2,imageRadius*2);
         ctx.restore();
+        if(inset>0){
+            // 絵の外周を統一して、実際の玉の輪郭からズレて見えないようにする。
+            ctx.save();
+            ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
+            ctx.beginPath();ctx.arc(0,0,r-1,0,Math.PI*2);
+            ctx.lineWidth=Math.max(1.5,Math.min(r*.045,3));
+            ctx.strokeStyle=index===4?'#aa70da':'#c54b32';ctx.stroke();
+            ctx.beginPath();ctx.arc(0,0,r-3,0,Math.PI*2);
+            ctx.lineWidth=1;ctx.strokeStyle='rgba(255,239,209,.72)';ctx.stroke();
+            ctx.restore();
+        }
     }
     function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false,warningAlpha=0) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
