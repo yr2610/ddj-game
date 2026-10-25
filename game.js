@@ -822,7 +822,7 @@
         if(mode==='final-intro'&&stage===0)ctx.scale(1+.16*Math.sin(Math.PI*intro),1+.16*Math.sin(Math.PI*intro));
         // 通常のボールと同様、玉の回転角へ筆文字も追従させる。
         ctx.rotate(b.angle);
-        if(hasFinalBallArt()){
+        if(hasFinalBallArt(FINAL_FIGHT_ART[stage])){
             drawFinalBallAsset(FINAL_FIGHT_ART[stage],radius);
             if(b.game.flash>0){
                 ctx.beginPath();ctx.arc(0,0,radius-1,0,Math.PI*2);
@@ -1363,49 +1363,36 @@
     function hasCombatArt(){
         return combatArt.complete&&combatArt.naturalWidth===320&&combatArt.naturalHeight===148;
     }
-    // 最新承認版の和風格闘ボールを透過WebPアトラスで一括管理。
-    // 9段階の通常玉と最終戦の4段階（大道塾～ミニ道塾）で共通利用する。
-    // 個々の切出領域は180×180px、192pxピッチで6pxの余白を付け、
-    // 高速回転時の隣接アトラス色の滲みを回避する。
-    const finalBallArt=new window.Image();
-    finalBallArt.decoding='async';
-    finalBallArt.src='./assets/final-ball-atlas-centered.webp?v=20261025-align2';
-    // 192px正方形単位の正規化アトラス：各玉の円形輪郭はセル中心(96,96)。
-    // 個別の180pxクロップはやめ、透明余白込みのセル全体を参照する。
-    const FINAL_BALL_ART={
-        0:[0,0,192,192],        // 突：青系
-        1:[192,0,192,192],      // 蹴：朱・橙
-        2:[384,0,192,192],      // 効果：荒々しい筆文字
-        3:[576,0,192,192],      // 投：緑
-        4:[0,192,192,192],      // 技あり：紫
-        5:[192,192,192,192],    // 極：関節技
-        6:[384,192,192,192],    // 一本：赤・火炎
-        7:[576,192,192,192],    // 空道：縦書き
-        8:[0,384,192,192]      // 大道塾：背景「大」＋縦書き
-    };
-    const FINAL_FIGHT_ART=[
-        [0,384,192,192],        // 大道塾
-        [192,384,192,192],      // 中道塾
-        [384,384,192,192],      // 小道塾
-        [576,384,192,192]      // ミニ道塾：背景は横書き「ミニ」
+    // 通常9種類・最終戦4段階に使う全12絵柄を独立した192×192透過WebPへ。
+    // アトラスからの切り出しを止め、中心ズレ・隣接画素の混入を解消する。
+    const BALL_SPRITE_FILES=[
+        'tsuki','keri','koka','nage','wazaari','kiwame',
+        'ippon','kudo','daido','chudo','shodo','mini'
     ];
-    function hasFinalBallArt(){
-        return finalBallArt.complete&&finalBallArt.naturalWidth===768&&
-            finalBallArt.naturalHeight===576;
+    const ballSprites=BALL_SPRITE_FILES.map(name=>{
+        const image=new window.Image();
+        image.decoding='async';
+        image.src='./assets/balls/'+name+'.webp?v=20261025-ringfix3';
+        return image;
+    });
+    const FINAL_BALL_ART={0:0,1:1,2:2,3:3,4:4,5:5,6:6,7:7,8:8};
+    const FINAL_FIGHT_ART=[8,9,10,11]; // 大道塾・中道塾・小道塾・ミニ道塾
+    function hasFinalBallArt(index){
+        const image=ballSprites[index];
+        return !!image&&image.complete&&image.naturalWidth===192&&image.naturalHeight===192;
     }
-    function drawFinalBallAsset(region,r){
-        // 物理玉の中心とアトラスのセル中心を厳密に一致させる。
-        // スプライト自体を中心揃えの円形に再生成済み。外周の余白も192pxに統一。
+    function drawFinalBallAsset(index,r){
+        // 個別スプライトの描画中心は(96,96)。アトラスの切り出し座標は使わない。
         ctx.save();
         ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
         ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.clip();
-        ctx.drawImage(finalBallArt,region[0],region[1],192,192,-r,-r,r*2,r*2);
+        ctx.drawImage(ballSprites[index],-r,-r,r*2,r*2);
         ctx.restore();
     }
     function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false,warningAlpha=0) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
         const approvedArt=FINAL_BALL_ART[lv];
-        if(approvedArt&&!black&&hasFinalBallArt()){
+        if(Number.isInteger(approvedArt)&&!black&&hasFinalBallArt(approvedArt)){
             drawFinalBallAsset(approvedArt,r);
             // 連打待ちの9秒リングは従来どおり玉の上に表示する。
             if(flash>0){
