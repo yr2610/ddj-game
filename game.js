@@ -822,6 +822,24 @@
         if(mode==='final-intro'&&stage===0)ctx.scale(1+.16*Math.sin(Math.PI*intro),1+.16*Math.sin(Math.PI*intro));
         // 通常のボールと同様、玉の回転角へ筆文字も追従させる。
         ctx.rotate(b.angle);
+        if(hasFinalBallArt()){
+            drawFinalBallAsset(FINAL_FIGHT_ART[stage],radius);
+            if(b.game.flash>0){
+                ctx.beginPath();ctx.arc(0,0,radius-1,0,Math.PI*2);
+                ctx.fillStyle='rgba(255,242,169,.22)';ctx.fill();
+            }
+            if(stage<3){
+                // HPは既存のルール。筆文字に埋もれないよう輪郭を付ける。
+                ctx.font='900 '+(stage===2?11:16)+'px system-ui';
+                ctx.textAlign='center';ctx.textBaseline='middle';
+                ctx.lineWidth=3;ctx.strokeStyle='#2b1014';
+                ctx.fillStyle='#fff0c9';
+                const remaining='残'+b.game.hp;
+                ctx.strokeText(remaining,0,radius*.59);
+                ctx.fillText(remaining,0,radius*.59);
+            }
+            ctx.restore();return;
+        }
         ctx.beginPath();ctx.arc(0,0,radius,0,Math.PI*2);
         const gradient=ctx.createRadialGradient(-radius*.36,-radius*.4,radius*.1,0,0,radius);
         gradient.addColorStop(0,b.game.flash?'#fff8d5':'#fdf0cf');
@@ -1338,8 +1356,63 @@
     function hasCombatArt(){
         return combatArt.complete&&combatArt.naturalWidth===320&&combatArt.naturalHeight===148;
     }
+    // 最新承認版の和風格闘ボールを透過WebPアトラスで一括管理。
+    // 9段階の通常玉と最終戦の4段階（大道塾～ミニ道塾）で共通利用する。
+    // 個々の切出領域は180×180px、192pxピッチで6pxの余白を付け、
+    // 高速回転時の隣接アトラス色の滲みを回避する。
+    const finalBallArt=new window.Image();
+    finalBallArt.decoding='async';
+    finalBallArt.src='./assets/final-ball-atlas.webp?v=20261025-approved2';
+    const FINAL_BALL_ART={
+        0:[6,6,180,180],        // 突：青系
+        1:[198,6,180,180],      // 蹴：朱・橙
+        2:[390,6,180,180],      // 効果：荒々しい筆文字
+        3:[582,6,180,180],      // 投：緑
+        4:[6,198,180,180],     // 技あり：紫
+        5:[198,198,180,180],   // 極：関節技
+        6:[390,198,180,180],   // 一本：赤・火炎
+        7:[582,198,180,180],   // 空道：縦書き
+        8:[6,390,180,180]      // 大道塾：背景「大」＋縦書き
+    };
+    const FINAL_FIGHT_ART=[
+        [6,390,180,180],       // 大道塾
+        [198,390,180,180],     // 中道塾
+        [390,390,180,180],     // 小道塾
+        [582,390,180,180]      // ミニ道塾：背景は横書き「ミニ」
+    ];
+    function hasFinalBallArt(){
+        return finalBallArt.complete&&finalBallArt.naturalWidth===768&&
+            finalBallArt.naturalHeight===576;
+    }
+    function drawFinalBallAsset(region,r){
+        ctx.drawImage(finalBallArt,region[0],region[1],region[2],region[3],
+            -r,-r,r*2,r*2);
+    }
     function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false,warningAlpha=0) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
+        const approvedArt=FINAL_BALL_ART[lv];
+        if(approvedArt&&!black&&hasFinalBallArt()){
+            ctx.shadowColor='#1b111dcc';ctx.shadowBlur=7;ctx.shadowOffsetY=3;
+            drawFinalBallAsset(approvedArt,r);
+            ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+            // 連打待ちの9秒リングは従来どおり玉の上に表示する。
+            if(flash>0){
+                ctx.beginPath();ctx.arc(0,0,r-1,0,Math.PI*2);
+                ctx.fillStyle='rgba(255,248,195,'+Math.min(.4,flash*.025)+')';ctx.fill();
+            }
+            if(warningAlpha>0){
+                ctx.beginPath();ctx.arc(0,0,r-1,0,Math.PI*2);
+                ctx.fillStyle='rgba(255,33,35,'+warningAlpha+')';ctx.fill();
+                ctx.strokeStyle='rgba(255,135,105,.85)';ctx.lineWidth=3;ctx.stroke();
+            }
+            if(hits){
+                ctx.fillStyle='#fff6ce';ctx.strokeStyle='#1e1016';ctx.lineWidth=3;
+                ctx.font='900 10px system-ui';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+                const count=hits+'/'+(2**lv);
+                ctx.strokeText(count,0,r*.74);ctx.fillText(count,0,r*.74);
+            }
+            ctx.restore();return;
+        }
         const art=BALL_ART[lv];
         if(art&&!black&&hasCombatArt()){
             ctx.shadowColor='#2b27233d';ctx.shadowBlur=7;ctx.shadowOffsetY=3;
@@ -1412,7 +1485,10 @@
                 const y=clamp(mark.y-16*t,height*.36,H-height*.36);
                 ctx.translate(x,y);ctx.scale(pop,pop);
                 ctx.globalAlpha=clamp(fade,0,1);
-                ctx.drawImage(combatArt,sx*ART_SX,sy*ART_SY,sw*ART_SX,sh*ART_SY,
+                // 前の画像アトラス境界のにじみ防止：各辺を2px内側から採取。
+                const trim=2;
+                ctx.drawImage(combatArt,(sx+trim)*ART_SX,(sy+trim)*ART_SY,
+                    (sw-trim*2)*ART_SX,(sh-trim*2)*ART_SY,
                     -width*.5,-height*.5,width,height);
             }else{
                 // 画像が使えなくても「効果！／技あり！！／一本！！！」を
