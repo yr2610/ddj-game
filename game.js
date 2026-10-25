@@ -1369,37 +1369,37 @@
     // 高速回転時の隣接アトラス色の滲みを回避する。
     const finalBallArt=new window.Image();
     finalBallArt.decoding='async';
-    finalBallArt.src='./assets/final-ball-atlas.webp?v=20261025-approved2';
+    finalBallArt.src='./assets/final-ball-atlas-centered.webp?v=20261025-align2';
+    // 192px正方形単位の正規化アトラス：各玉の円形輪郭はセル中心(96,96)。
+    // 個別の180pxクロップはやめ、透明余白込みのセル全体を参照する。
     const FINAL_BALL_ART={
-        0:[6,6,180,180],        // 突：青系
-        1:[198,6,180,180],      // 蹴：朱・橙
-        2:[390,6,180,180],      // 効果：荒々しい筆文字
-        3:[582,6,180,180],      // 投：緑
-        4:[6,198,180,180],     // 技あり：紫
-        5:[198,198,180,180],   // 極：関節技
-        6:[390,198,180,180],   // 一本：赤・火炎
-        7:[582,198,180,180],   // 空道：縦書き
-        8:[6,390,180,180]      // 大道塾：背景「大」＋縦書き
+        0:[0,0,192,192],        // 突：青系
+        1:[192,0,192,192],      // 蹴：朱・橙
+        2:[384,0,192,192],      // 効果：荒々しい筆文字
+        3:[576,0,192,192],      // 投：緑
+        4:[0,192,192,192],      // 技あり：紫
+        5:[192,192,192,192],    // 極：関節技
+        6:[384,192,192,192],    // 一本：赤・火炎
+        7:[576,192,192,192],    // 空道：縦書き
+        8:[0,384,192,192]      // 大道塾：背景「大」＋縦書き
     };
     const FINAL_FIGHT_ART=[
-        [6,390,180,180],       // 大道塾
-        [198,390,180,180],     // 中道塾
-        [390,390,180,180],     // 小道塾
-        [582,390,180,180]      // ミニ道塾：背景は横書き「ミニ」
+        [0,384,192,192],        // 大道塾
+        [192,384,192,192],      // 中道塾
+        [384,384,192,192],      // 小道塾
+        [576,384,192,192]      // ミニ道塾：背景は横書き「ミニ」
     ];
     function hasFinalBallArt(){
         return finalBallArt.complete&&finalBallArt.naturalWidth===768&&
             finalBallArt.naturalHeight===576;
     }
     function drawFinalBallAsset(region,r){
-        // 絵柄の黒い縁や白い輪が物理的な玉の外へはみ出さないよう
-        // 明示的に中心揃え＋円形クリップする。アトラスの余白も吸収する。
+        // 物理玉の中心とアトラスのセル中心を厳密に一致させる。
+        // スプライト自体を中心揃えの円形に再生成済み。外周の余白も192pxに統一。
         ctx.save();
         ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
         ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.clip();
-        const drawRadius=r*.985;
-        ctx.drawImage(finalBallArt,region[0],region[1],region[2],region[3],
-            -drawRadius,-drawRadius,drawRadius*2,drawRadius*2);
+        ctx.drawImage(finalBallArt,region[0],region[1],192,192,-r,-r,r*2,r*2);
         ctx.restore();
     }
     function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false,warningAlpha=0) {
