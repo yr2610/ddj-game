@@ -979,7 +979,14 @@
         special.expires=0;
         b.game.flash=10;
         sparkle(b.position.x,b.position.y,'#b85155',10);
-        notify(rule.blackName+'！ 黒玉発生',850);
+        // 黒玉になった瞬間、当該玉の近くへ大きな宣告を表示。
+        // 固定HUDでなく成立の筆文字と同じ描画レイヤーを利用する。
+        successMarks.push({
+            x:b.position.x,y:b.position.y-b.circleRadius-12,
+            text:rule.blackName+'！',level:b.game.level,
+            black:true,life:1150,maxLife:1150
+        });
+        if(successMarks.length>9)successMarks.splice(0,successMarks.length-9);
     }
     function updateSpecials() {
         for(const b of balls) {
@@ -1385,16 +1392,21 @@
             finalBallArt.naturalHeight===576;
     }
     function drawFinalBallAsset(region,r){
+        // 絵柄の黒い縁や白い輪が物理的な玉の外へはみ出さないよう
+        // 明示的に中心揃え＋円形クリップする。アトラスの余白も吸収する。
+        ctx.save();
+        ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
+        ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.clip();
+        const drawRadius=r*.985;
         ctx.drawImage(finalBallArt,region[0],region[1],region[2],region[3],
-            -r,-r,r*2,r*2);
+            -drawRadius,-drawRadius,drawRadius*2,drawRadius*2);
+        ctx.restore();
     }
     function ballDraw(lv,x,y,r,flash=0,opacity=1,hits=0,angle=0,black=false,pending=false,warningAlpha=0) {
         const d=TIERS[lv];ctx.save();ctx.globalAlpha=opacity;ctx.translate(x,y);ctx.rotate(angle);
         const approvedArt=FINAL_BALL_ART[lv];
         if(approvedArt&&!black&&hasFinalBallArt()){
-            ctx.shadowColor='#1b111dcc';ctx.shadowBlur=7;ctx.shadowOffsetY=3;
             drawFinalBallAsset(approvedArt,r);
-            ctx.shadowBlur=0;ctx.shadowOffsetY=0;
             // 連打待ちの9秒リングは従来どおり玉の上に表示する。
             if(flash>0){
                 ctx.beginPath();ctx.arc(0,0,r-1,0,Math.PI*2);
@@ -1405,12 +1417,7 @@
                 ctx.fillStyle='rgba(255,33,35,'+warningAlpha+')';ctx.fill();
                 ctx.strokeStyle='rgba(255,135,105,.85)';ctx.lineWidth=3;ctx.stroke();
             }
-            if(hits){
-                ctx.fillStyle='#fff6ce';ctx.strokeStyle='#1e1016';ctx.lineWidth=3;
-                ctx.font='900 10px system-ui';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-                const count=hits+'/'+(2**lv);
-                ctx.strokeText(count,0,r*.74);ctx.fillText(count,0,r*.74);
-            }
+            // 連打回数は絵柄を隠すので表示しない（成立判定には影響なし）。
             ctx.restore();return;
         }
         const art=BALL_ART[lv];
@@ -1423,12 +1430,6 @@
             if(flash>0){
                 ctx.beginPath();ctx.arc(0,0,r-1,0,Math.PI*2);
                 ctx.fillStyle='rgba(255,248,195,'+(Math.min(.40,flash*.025))+')';ctx.fill();
-            }
-            if(hits){
-                ctx.fillStyle='#fff1c9';ctx.strokeStyle='#241016';ctx.lineWidth=3;
-                ctx.font='900 10px system-ui';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-                const count=hits+'/'+(2**lv);
-                ctx.strokeText(count,0,r*.74);ctx.fillText(count,0,r*.74);
             }
             ctx.restore();return;
         }
@@ -1463,7 +1464,6 @@
         const name=black?SPECIAL[lv].blackName:d.name;
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.fillText(name,0,pending?-r*.28:black?-r*.11:1,lv===6?r*1.9:r*1.75);
-        if(hits&&!black){ctx.textBaseline='alphabetic';ctx.fillStyle='#a42923';ctx.font='900 10px system-ui';ctx.fillText(hits+'/'+(2**lv),0,r*.73)}
         ctx.restore();
     }
     // 成立した玉の「少し上」で短い筆文字が叩きつけられ、浮いて消える。
@@ -1478,6 +1478,26 @@
             const asset=SUCCESS_ART[mark.level];
             const size=mark.level===6?73:mark.level===4?54:43;
             ctx.save();
+            if(mark.black){
+                // 黒玉化の「注意！／警告！／失格！」は玉の上へ筆文字で宣告。
+                // 画面端では水平位置を補正し、持続時間の終わりで消える。
+                const fontSize=mark.level===6?62:mark.level===4?53:44;
+                ctx.font='900 '+fontSize+'px "Yuji Boku","Yu Mincho",serif';
+                ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+                const textWidth=Math.min(W-24,ctx.measureText(mark.text).width);
+                const x=clamp(mark.x,textWidth*.5+12,W-textWidth*.5-12);
+                const y=clamp(mark.y-12*t,28,H-35);
+                ctx.translate(x,y);ctx.scale(pop,pop);
+                ctx.globalAlpha=clamp(fade,0,1);
+                ctx.shadowColor='#f83a32';ctx.shadowBlur=12;
+                ctx.strokeStyle='#1b080e';ctx.lineWidth=12;
+                ctx.strokeText(mark.text,0,0,W-24);
+                ctx.shadowBlur=0;ctx.strokeStyle='#a70e22';ctx.lineWidth=4;
+                ctx.strokeText(mark.text,0,0,W-24);
+                ctx.fillStyle='#ffe9bb';ctx.fillText(mark.text,0,0,W-24);
+                ctx.restore();
+                continue;
+            }
             if(asset&&hasCombatArt()){
                 const [sx,sy,sw,sh,width]=asset;
                 const height=width*sh/sw;
@@ -1600,8 +1620,7 @@
             ctx.strokeStyle=time<.35?'#df3833':'#fff7db';
             ctx.lineWidth=4;ctx.beginPath();
             ctx.arc(0,0,r+2,-Math.PI/2,-Math.PI/2+Math.PI*2*time);ctx.stroke();
-            ctx.fillStyle='#24292c';ctx.font='900 '+Math.min(22,r*.55)+'px system-ui';
-            ctx.fillText(String(special.remaining),0,r*.42);
+            // 連打の残り回数は非表示。時間リングと残り秒数だけ維持。
             const seconds=Math.ceil(Math.max(0,special.expires-currentTime)/1000);
             ctx.fillStyle='#a32b28';ctx.font='bold '+Math.max(11,Math.min(16,r*.28))+'px system-ui';
             ctx.fillText(seconds+'秒',0,-r*.78);
@@ -1621,10 +1640,7 @@
         }else{
             ctx.strokeStyle='#dd4a3d';ctx.lineWidth=3;
             ctx.beginPath();ctx.arc(0,0,r-2,0,Math.PI*2);ctx.stroke();
-            if(mode==='strike') {
-                ctx.fillStyle='#fbe7a9';ctx.font='bold '+Math.min(22,r*.55)+'px system-ui';
-                ctx.fillText('残'+Math.ceil(special.remaining),0,r*.46);
-            }
+            // 黒玉の解除回数も非表示。打撃ラッシュでの解除判定は継続。
         }
         ctx.restore();
     }
