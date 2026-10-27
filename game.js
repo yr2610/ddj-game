@@ -60,14 +60,10 @@
     const SPECIAL_TIME=9000;
     const HIT_MARGIN=12; // 通常画面でも当てやすいよう玉の輪郭から12pxまで許容。
     const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
-    // スマホのWeb Speech APIは無音になり得るため、CC0の実録ボイスを使う。
-    // HaelDB (CC0): https://opengameart.org/content/male-gruntyelling-sounds
-    // iPadOSはMacintoshのUAを返すことがある。iPhone/iPadは共通の録音掛け声を使用。
+    // スマホの悲鳴・ダメージボイスを廃止。音声合成の短い日本語の気合い声へ。
     const IOS_AUDIO=/iPhone|iPad|iPod/i.test(navigator.userAgent)||
         (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
     const MOBILE_VOICE=/Android/i.test(navigator.userAgent)||IOS_AUDIO;
-    const VOICE_BASE = 'https://raw.githubusercontent.com/transitive-bullshit/ai-safety-doom/de99fce98d664c218944ec030859251f26c6bccf/public/game/audio/';
-    const VOICE_FILES = ['player-pain-1.wav','player-pain-2.wav','player-death.wav'];
     const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
     const randomLevel = () => {const p=Math.random();return p<.48?0:p<.78?1:p<.95?2:3};
     let engine, balls=[], pending=[], particles=[], impacts=[], successMarks=[];
@@ -86,26 +82,7 @@
         ctx:null, next:0, index:0,noiseBuffer:null,iosUnlocked:false,
         samples:{},sampleLoadStarted:false,sampleTurn:0,fxOutput:null,
         musicBuffers:{},musicLoadStarted:false,musicNode:null,musicName:null,
-        voiceBuffers:null,voiceLoadStarted:false,pendingVoice:null,voiceFailed:false,voiceIndex:0,
-        async loadVoices() {
-            if(this.voiceLoadStarted||!MOBILE_VOICE||!this.ctx)return;
-            this.voiceLoadStarted=true;
-            try {
-                const buffers=[];
-                for(const name of VOICE_FILES) {
-                    const response=await fetch(VOICE_BASE+name,{mode:'cors'});
-                    if(!response.ok)throw Error('HTTP '+response.status);
-                    buffers.push(await this.ctx.decodeAudioData(await response.arrayBuffer()));
-                }
-                this.voiceBuffers=buffers;
-                const waiting=this.pendingVoice;this.pendingVoice=null;
-                if(waiting&&performance.now()-waiting.at<2000)this.sampleVoice(waiting.text);
-            }catch (e) {
-                this.voiceFailed=true;this.pendingVoice=null;
-                console.warn('収録ボイスを取得できません:',e);
-                ui.voice.textContent='声 読込失敗';
-            }
-        },
+        voiceUnavailable:false,
         // オリジナルPCMを優先。WAVは旧iOS Safariでも再生可能。
         // 取得失敗時のみ従来のKenney CC0 Ogg → 旧Web Audio合成音へ退避する。
         async loadSamples(){
@@ -185,21 +162,6 @@
                 return false;
             }
         },
-        sampleVoice(text) {
-            if(muted||!voiceEnabled||!this.ctx)return;
-            if(!this.voiceBuffers) {
-                if(!this.voiceFailed)this.pendingVoice={text,at:performance.now()};
-                return;
-            }
-            const long=/始め|そこまで|ドリャ|ラッシュ|一本/.test(text);
-            const index=long?2:(this.voiceIndex++%2);
-            const src=this.ctx.createBufferSource();
-            const gain=this.ctx.createGain();
-            src.buffer=this.voiceBuffers[index];
-            src.playbackRate.value=long?1:0.92+Math.random()*.2;
-            gain.gain.value=long?.35:.34;
-            src.connect(gain);gain.connect(this.ctx.destination);src.start();
-        },
         resume() {
             // iOS Safariはバックグラウンド復帰時に'suspended'だけでなく
             // 'interrupted'になる。どちらも再開対象にする。
@@ -239,7 +201,6 @@
             this.resume();
             this.loadSamples();
             this.loadMusic();
-            this.loadVoices();
             this.next=Math.max(this.next,this.ctx.currentTime+.02);
         },
         unlockIOS() {
@@ -446,7 +407,11 @@
     }
     function speak(s,urgent=false) {
         if(muted||!voiceEnabled)return;
-        if(MOBILE_VOICE) {audio.sampleVoice(s);return}
+        // スマホでも従来の悲鳴素材を使わず、日本語の「ハッ！」を優先する。
+        if(MOBILE_VOICE)
+            s=/そこまで/.test(s)?'そこまで！':
+                /失格|技あり|効果|一本！/.test(s)?s.replace(/！！+/g,'！'):
+                'ハッ！';
         if(!('speechSynthesis' in window)||!('SpeechSynthesisUtterance' in window))return;
         try {
             const a=window.speechSynthesis;
@@ -459,8 +424,11 @@
             if(!urgent&&(a.speaking||a.pending))return;
             refreshVoices();
             const u=new SpeechSynthesisUtterance(s);
-            u.lang='ja-JP';u.rate=1.25;u.pitch=.8;u.volume=1;
-            if(japaneseVoices.length)u.voice=japaneseVoices.find(v=>v.localService)||japaneseVoices[0];
+            u.lang='ja-JP';u.rate=MOBILE_VOICE?1.55:1.25;
+            u.pitch=MOBILE_VOICE?.62:.8;u.volume=1;
+            if(japaneseVoices.length)
+                u.voice=japaneseVoices.find(v=>/男|male|masculine|ichiro|keita|otoya|takumi/i.test(v.name||''))||
+                    japaneseVoices.find(v=>v.localService)||japaneseVoices[0];
             currentUtterance=u;
             speechDeadline=now+Math.min(3500,Math.max(1300,700+s.length*210));
             u.onend=()=>{if(currentUtterance===u){currentUtterance=null;speechDeadline=0}};
@@ -933,7 +901,7 @@
         const rule=SPECIAL[b.game.level];
         b.game.special={state:'pending',fromLevel,remaining:rule.hits,expires:currentTime+SPECIAL_TIME,lastHitAt:null};
         b.game.hits=0;
-        notify(TIERS[b.game.level].name+'を叩け！',800);
+        // 「叩け！」は固定通知ではなく玉の上に表示する。
     }
     function resolveSpecial(b) {
         const special=b.game.special;
@@ -1615,6 +1583,44 @@
         const pulse=(1+Math.sin(currentTime*Math.PI*2/330))*.5;
         return (.12+.50*pulse)*(.82+.18*urgency);
     }
+    // 未打撃の成立待ち玉の上に表示し、赤警告時には打撃中でも再表示。
+    function drawHitPrompt(b,urgent){
+        const r=b.circleRadius,size=Math.min(52,Math.max(21,r*.72));
+        const x=b.position.x,y=b.position.y;
+        const phase=currentTime/(urgent?95:240);
+        const pulse=urgent?1+.105*Math.sin(phase):1+.045*Math.sin(phase);
+        const lift=urgent?3.3*Math.sin(phase*1.12):1.6*Math.sin(phase);
+        const text='叩け！';
+        ctx.save();
+        ctx.font='900 '+size+'px "Yuji Mai","Yuji Boku","Yu Mincho",serif';
+        const labelWidth=Math.min(W-18,ctx.measureText(text).width+size*.36);
+        const tx=clamp(x,labelWidth/2+7,W-labelWidth/2-7);
+        const ty=clamp(y-r-size*.54-11+lift,size*.58+4,H-size*.75);
+        ctx.translate(tx,ty);ctx.scale(pulse,pulse);
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+        if(urgent){
+            const glow=.74+.26*Math.sin(currentTime/92);
+            ctx.strokeStyle='rgba(255,68,42,'+glow+')';
+            ctx.lineWidth=Math.max(2,size*.08);
+            for(let i=0;i<8;i++){
+                const ang=i*Math.PI/4+Math.PI/8;
+                const inner=size*.58,outer=size*(.81+.15*glow);
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(ang)*inner,Math.sin(ang)*inner*.58);
+                ctx.lineTo(Math.cos(ang)*outer,Math.sin(ang)*outer*.67);
+                ctx.stroke();
+            }
+        }
+        ctx.shadowColor=urgent?'#ff2a11':'#db5c23';ctx.shadowBlur=urgent?18:8;
+        ctx.strokeStyle='#17070e';ctx.lineWidth=Math.max(5,size*.25);
+        ctx.strokeText(text,0,0,W-20);
+        ctx.shadowBlur=0;ctx.strokeStyle=urgent?'#e22c25':'#a94326';
+        ctx.lineWidth=Math.max(2.5,size*.085);
+        ctx.strokeText(text,0,0,W-20);
+        ctx.fillStyle=urgent?'#fff1aa':'#fff0bc';
+        ctx.fillText(text,0,0,W-20);
+        ctx.restore();
+    }
     function drawSpecialOverlay(b) {
         const special=b.game.special;
         if(!special)return;
@@ -1649,6 +1655,10 @@
             // 黒玉の解除回数も非表示。打撃ラッシュでの解除判定は継続。
         }
         ctx.restore();
+        if(pending){
+            const urgent=special.expires-currentTime<=SPECIAL_TIME*.35;
+            if(special.lastHitAt===null||urgent)drawHitPrompt(b,urgent);
+        }
     }
     // ラッシュの最後3秒だけ、中央に大きな数字を重ねる。
     // Canvasへの描画だけなので、玉への打撃や掴み操作の入力領域は変わらない。

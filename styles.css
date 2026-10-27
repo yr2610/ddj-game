@@ -592,3 +592,31 @@ footer {color:#a18a85}
 @media(prefers-reduced-motion:reduce){
     .alert.end-call.active{animation:none;opacity:1;transform:translate(-50%,0)}
 }
+
+/* キャッチコピーを荒々しい毛筆へ。2行レイアウトは維持する。 */
+.overlay-panel .panel-slogan,
+.overlay:has(.game-title) .panel-slogan{
+    position:relative;isolation:isolate;
+    font-family:"Yuji Mai","Yuji Boku","Yu Mincho",serif;
+    font-weight:900;font-size:clamp(18px,5.2vw,23px);
+    letter-spacing:-.045em;color:#fff4d1;
+    background:
+        linear-gradient(104deg,transparent 0% 9%,rgba(197,44,31,.27) 11% 14%,transparent 17% 37%,rgba(219,76,31,.17) 40% 47%,transparent 52%),
+        linear-gradient(90deg,rgba(10,8,12,.80),rgba(75,14,18,.47),rgba(10,8,12,.80));
+    -webkit-text-stroke:.6px #fff1c6;
+    text-shadow:2px 3px 0 #180508,3px 4px 0 #7d1d18,-1px -1px 0 #6c1014,0 0 13px rgba(246,109,32,.63);
+    transform:skew(-4deg) rotate(-1deg);
+}
+.overlay-panel .panel-slogan span:first-child{transform:translateX(-2px) rotate(-.45deg)}
+.overlay-panel .panel-slogan span:last-child{transform:translateX(3px) rotate(.35deg)}
+.overlay-panel .panel-slogan strong{
+    display:inline-block;font-family:"Yuji Mai","Yuji Boku",serif;
+    font-weight:900;font-size:1.46em;line-height:1;color:#fff9d4;
+    -webkit-text-stroke:.8px #f6d49f;
+    text-shadow:2px 3px 0 #280406,4px 5px 0 #951914,0 0 11px #e95b23,0 0 20px #ff9d38;
+    transform:rotate(-4deg) skew(-4deg);
+}
+@media(max-width:340px){
+    .overlay-panel .panel-slogan,
+    .overlay:has(.game-title) .panel-slogan{font-size:16px}
+}
