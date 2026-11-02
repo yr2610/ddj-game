@@ -593,28 +593,30 @@ footer {color:#a18a85}
     .alert.end-call.active{animation:none;opacity:1;transform:translate(-50%,0)}
 }
 
-/* キャッチコピーを荒々しい毛筆へ。2行レイアウトは維持する。 */
+/* タイトルのキャッチコピーは可愛い筆記体でなく、重い毛筆と朱の荒い飛沫で統一。 */
 .overlay-panel .panel-slogan,
 .overlay:has(.game-title) .panel-slogan{
-    position:relative;isolation:isolate;
-    font-family:"Yuji Mai","Yuji Boku","Yu Mincho",serif;
+    position:relative;isolation:isolate;overflow:hidden;
+    font-family:"Yuji Boku","Yu Mincho",serif;
     font-weight:900;font-size:clamp(18px,5.2vw,23px);
-    letter-spacing:-.045em;color:#fff4d1;
+    letter-spacing:-.075em;color:#fff0c8;
     background:
-        linear-gradient(104deg,transparent 0% 9%,rgba(197,44,31,.27) 11% 14%,transparent 17% 37%,rgba(219,76,31,.17) 40% 47%,transparent 52%),
-        linear-gradient(90deg,rgba(10,8,12,.80),rgba(75,14,18,.47),rgba(10,8,12,.80));
-    -webkit-text-stroke:.6px #fff1c6;
-    text-shadow:2px 3px 0 #180508,3px 4px 0 #7d1d18,-1px -1px 0 #6c1014,0 0 13px rgba(246,109,32,.63);
-    transform:skew(-4deg) rotate(-1deg);
+        radial-gradient(ellipse 36px 3px at 12% 20%,rgba(218,57,28,.65) 0 70%,transparent 75%),
+        radial-gradient(ellipse 3px 13px at 88% 80%,rgba(218,57,28,.5) 0 70%,transparent 75%),
+        linear-gradient(106deg,transparent 0% 9%,rgba(197,44,31,.35) 11% 14%,transparent 17% 37%,rgba(219,76,31,.22) 40% 47%,transparent 52%),
+        linear-gradient(90deg,rgba(10,8,12,.89),rgba(75,14,18,.57),rgba(10,8,12,.86));
+    -webkit-text-stroke:.9px #fff2ce;
+    text-shadow:2px 2px 0 #210408,3px 4px 0 #8c1c12,-1px -1px 0 #210507,0 0 16px rgba(246,82,25,.65);
+    transform:skew(-6deg) rotate(-1.1deg);
 }
-.overlay-panel .panel-slogan span:first-child{transform:translateX(-2px) rotate(-.45deg)}
-.overlay-panel .panel-slogan span:last-child{transform:translateX(3px) rotate(.35deg)}
+.overlay-panel .panel-slogan span:first-child{transform:translateX(-4px) rotate(-1.25deg)}
+.overlay-panel .panel-slogan span:last-child{transform:translateX(4px) rotate(1.25deg)}
 .overlay-panel .panel-slogan strong{
-    display:inline-block;font-family:"Yuji Mai","Yuji Boku",serif;
-    font-weight:900;font-size:1.46em;line-height:1;color:#fff9d4;
-    -webkit-text-stroke:.8px #f6d49f;
-    text-shadow:2px 3px 0 #280406,4px 5px 0 #951914,0 0 11px #e95b23,0 0 20px #ff9d38;
-    transform:rotate(-4deg) skew(-4deg);
+    display:inline-block;font-family:"Yuji Boku","Yu Mincho",serif;
+    font-weight:900;font-size:1.52em;line-height:1;color:#ffebad;
+    -webkit-text-stroke:1.2px #ffe4a2;
+    text-shadow:3px 3px 0 #200308,5px 6px 0 #ab2413,-1px -1px 0 #420b0c,0 0 14px #ff681d;
+    transform:rotate(-6deg) skew(-8deg);
 }
 @media(max-width:340px){
     .overlay-panel .panel-slogan,

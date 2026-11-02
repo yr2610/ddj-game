@@ -59,7 +59,9 @@
     };
     const SPECIAL_TIME=9000;
     const HIT_MARGIN=12; // 通常画面でも当てやすいよう玉の輪郭から12pxまで許容。
-    const SHOUTS = ['セイッ！','ヤーッ！','エイヤッ！','オリャッ！','ドリャアッ！','トォッ！'];
+    // 落下時は日本の武道を意識した短い掛け声だけをランダム再生。
+    // 録音素材を組み込むまでの暫定音声。端末側の音声合成を使用する。
+    const SHOUTS = ['セイッ！','ヤーッ！','ハッ！','エイッ！'];
     // スマホの悲鳴・ダメージボイスを廃止。音声合成の短い日本語の気合い声へ。
     const IOS_AUDIO=/iPhone|iPad|iPod/i.test(navigator.userAgent)||
         (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -407,11 +409,10 @@
     }
     function speak(s,urgent=false) {
         if(muted||!voiceEnabled)return;
-        // スマホでも従来の悲鳴素材を使わず、日本語の「ハッ！」を優先する。
-        if(MOBILE_VOICE)
-            s=/そこまで/.test(s)?'そこまで！':
-                /失格|技あり|効果|一本！/.test(s)?s.replace(/！！+/g,'！'):
-                'ハッ！';
+        // スマホでも「セイッ！」「ヤーッ！」「ハッ！」をそのまま発声。
+        // 以前はすべて「ハッ！」に置換していたため、落下ごとの変化がなかった。
+        if(MOBILE_VOICE&&/失格|技あり|効果|一本！/.test(s))
+            s=s.replace(/！！+/g,'！');
         if(!('speechSynthesis' in window)||!('SpeechSynthesisUtterance' in window))return;
         try {
             const a=window.speechSynthesis;
@@ -424,8 +425,10 @@
             if(!urgent&&(a.speaking||a.pending))return;
             refreshVoices();
             const u=new SpeechSynthesisUtterance(s);
-            u.lang='ja-JP';u.rate=MOBILE_VOICE?1.55:1.25;
-            u.pitch=MOBILE_VOICE?.62:.8;u.volume=1;
+            u.lang='ja-JP';
+            // 甲高い悲鳴のように聞こえにくいように低め・短めの発声にする。
+            u.rate=MOBILE_VOICE?1.48:1.25;
+            u.pitch=MOBILE_VOICE?.48:.8;u.volume=1;
             if(japaneseVoices.length)
                 u.voice=japaneseVoices.find(v=>/男|male|masculine|ichiro|keita|otoya|takumi/i.test(v.name||''))||
                     japaneseVoices.find(v=>v.localService)||japaneseVoices[0];
