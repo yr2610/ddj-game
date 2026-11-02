@@ -77,6 +77,22 @@
     let rushReadyQueue=[];
     let finalIntroLeft=0, finalTimeLeft=FINAL_MAX_TIME, finalKills=0, finalHitMarks=[], finalGameActive=false;
     let muted=false, voiceEnabled=true, lastMergeVoice=-10000;
+    let hasStartedGameInThisTab=false;
+    // GoatCounterは非同期読み込み。初回ロード直後の開始操作もなるべく取りこぼさない。
+    // 個人を識別するID等は送らず、ゲームイベント名と件数のみ記録する。
+    function recordGameEvent(path,title,attempt=0){
+        if(FINAL_PREVIEW)return; // デバッグ用の最終戦直行モードは回数から除外。
+        try{
+            if(window.goatcounter&&typeof window.goatcounter.count==='function'){
+                window.goatcounter.count({path,title,event:true,no_session:true});
+                return;
+            }
+        }catch(e){
+            console.warn('プレイ統計を送信できませんでした:',e);
+            return;
+        }
+        if(attempt<12)setTimeout(()=>recordGameEvent(path,title,attempt+1),250);
+    }
     try {best=Math.max(0,Number(localStorage.getItem('ddj-best-v1'))||0)} catch (_) {}
     ui.best.textContent=best.toLocaleString('ja-JP');
 
@@ -1059,6 +1075,10 @@
         rushEndPauseMs=0;rushEndKind=null;
         finalIntroLeft=0;finalTimeLeft=FINAL_MAX_TIME;finalKills=0;finalHitMarks=[];finalGameActive=false;
         makeWorld();mode='playing';ui.score.textContent='0';ui.overlay.classList.add('hidden');
+        // スタート・再挑戦ともプレイ回数を1増やす（同じ人の連続プレイも個別計上）。
+        recordGameEvent('play-start','プレイ開始');
+        if(hasStartedGameInThisTab)recordGameEvent('play-retry','再挑戦');
+        hasStartedGameInThisTab=true;
         showFinalHud(false);updateNext();updateHud();hint('盤面をタップして落下／成立待ち玉は連打');
         audio.start();audio.fx('rush');notify('始め！！',1000);speak('一本勝負！ 始め！',true);
         if(FINAL_PREVIEW)beginFinalBattle();
@@ -1205,6 +1225,7 @@
         if(finalOutcome){
             clearNotice();mode='ended';updateHud();
             const victory=finalOutcome==='win';
+            recordGameEvent(victory?'game-clear':'game-over',victory?'完全制覇':'ゲームオーバー');
             audio.fx(victory?'win':'end');
             stopSpeech();
             if(!audio.playVoice(victory?'voice-victory':'voice-gameover',
@@ -1225,7 +1246,9 @@
             }},1450);
             return;
         }
-        mode='ended';updateHud();audio.fx('end');stopSpeech();
+        mode='ended';
+        recordGameEvent('game-over','ゲームオーバー');
+        updateHud();audio.fx('end');stopSpeech();
         if(!audio.playVoice('voice-gameover',.64,true))speak('そこまで！',true);
         notify('そこまで！',1650);
         const rank=score>=25000?'塾長級':score>=14000?'五段':score>=8000?'三段':
