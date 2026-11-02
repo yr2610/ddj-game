@@ -84,21 +84,25 @@
         ctx:null, next:0, index:0,noiseBuffer:null,iosUnlocked:false,
         samples:{},sampleLoadStarted:false,sampleTurn:0,fxOutput:null,
         musicBuffers:{},musicLoadStarted:false,musicNode:null,musicName:null,
-        voiceUnavailable:false,
+        voiceUnavailable:false,voiceSource:null,lastVoiceAt:-10,
         // オリジナルPCMを優先。WAVは旧iOS Safariでも再生可能。
         // 取得失敗時のみ従来のKenney CC0 Ogg → 旧Web Audio合成音へ退避する。
         async loadSamples(){
             if(this.sampleLoadStarted||!this.ctx)return;
             this.sampleLoadStarted=true;
             const names=['hit-light','hit-alt','hit-heavy','hit-heavy2','break',
-                'split','merge','finish','drop','rush','end','win'];
+                'split','merge','finish','drop','rush','end','win',
+                // 効果音ラボの男性剣士・声優 吉田史記の録音ボイス。
+                'voice-drop1','voice-drop2','voice-fail','voice-heavy',
+                'voice-gameover','voice-victory'];
             const legacy=new Set(['hit-light','hit-alt','hit-heavy','hit-heavy2',
                 'break','split','merge']);
             await Promise.all(names.map(async name=>{
-                const formats=['wav',...(legacy.has(name)?['ogg']:[])];
+                const voice=name.startsWith('voice-');
+                const formats=voice?['mp3']:['wav',...(legacy.has(name)?['ogg']:[])];
                 for(const ext of formats){
                     try{
-                        const ver=ext==='wav'?'20261024-audio2':'arcade1';
+                        const ver=voice?'20261102-voices1':ext==='wav'?'20261024-audio2':'arcade1';
                         const response=await fetch('./assets/audio/'+name+'.'+ext+'?v='+ver);
                         if(!response.ok)throw Error('HTTP '+response.status);
                         this.samples[name]=await this.ctx.decodeAudioData(await response.arrayBuffer());
@@ -161,6 +165,32 @@
                 return true;
             }catch(e){
                 console.warn('効果音の再生に失敗しました:',name,e);
+                return false;
+            }
+        },
+        // 実録音ボイスは音声ONの場合のみ鳴らす。重複を防ぐため一度に1つ。
+        playVoice(name,volume=.52,urgent=false){
+            const a=this.ctx,buffer=this.samples[name];
+            if(muted||!voiceEnabled||!a||a.state!=='running'||!buffer)return false;
+            const now=a.currentTime;
+            if(!urgent&&now-this.lastVoiceAt<.68)return false;
+            try{
+                if(this.voiceSource){
+                    try{this.voiceSource.stop()}catch(_){}
+                    this.voiceSource=null;
+                }
+                const source=a.createBufferSource(),gain=a.createGain();
+                source.buffer=buffer;
+                gain.gain.value=volume;
+                source.connect(gain);
+                gain.connect(this.fxOutput||a.destination);
+                this.voiceSource=source;
+                this.lastVoiceAt=now;
+                source.onended=()=>{if(this.voiceSource===source)this.voiceSource=null};
+                source.start(now);
+                return true;
+            }catch(e){
+                console.warn('録音ボイスを再生できません:',name,e);
                 return false;
             }
         },
@@ -949,6 +979,9 @@
         special.state='black';special.remaining=rule.blackHits;
         special.expires=0;
         b.game.flash=10;
+        // 効果・技あり・一本の不成立で「ぐっ！」、一本では重い「ぐああっ！」。
+        if(audio.playVoice(b.game.level>=6?'voice-heavy':'voice-fail',
+            b.game.level>=6?.57:.49,true))stopSpeech();
         sparkle(b.position.x,b.position.y,'#b85155',10);
         // 黒玉になった瞬間、当該玉の近くへ大きな宣告を表示。
         // 固定HUDでなく成立の筆文字と同じ描画レイヤーを利用する。
@@ -1038,7 +1071,9 @@
         activePlacements.push({ball:b,since:currentTime,stillMs:0,heightAnchor:null,heightStableMs:0});
         nextLevel=randomLevel();updateNext();
         hint('次の玉まで一瞬待機…');
-        audio.fx('drop');speak(SHOUTS[Math.floor(Math.random()*SHOUTS.length)]);
+        audio.fx('drop');
+        // 合成音声ではなく録音された男性の短い戦闘ボイス。読み込み前はSEのみ。
+        audio.playVoice(Math.random()<.7?'voice-drop1':'voice-drop2',.50);
     }
     // 途中まで削った耐久はラッシュ終了時に破棄する。成立待ちの技への
     // 連打進捗は別物なのでリセットしない。
@@ -1171,7 +1206,10 @@
             clearNotice();mode='ended';updateHud();
             const victory=finalOutcome==='win';
             audio.fx(victory?'win':'end');
-            speak(victory?'一本！':'そこまで！',true);
+            stopSpeech();
+            if(!audio.playVoice(victory?'voice-victory':'voice-gameover',
+                victory?.57:.64,true))
+                speak(victory?'一本！':'そこまで！',true);
             ui.panel.innerHTML='<div class="panel-kicker">最終戦・'+(victory?'完全制覇':'時間切れ')+'</div>'+
                 '<h1 class="result-headline">'+(victory?'免許皆伝！！':'時間切れ！')+'</h1>'+
                 '<div class="result">得点 <strong>'+score.toLocaleString('ja-JP')+
@@ -1187,7 +1225,9 @@
             }},1450);
             return;
         }
-        mode='ended';updateHud();audio.fx('end');speak('そこまで！',true);notify('そこまで！',1650);
+        mode='ended';updateHud();audio.fx('end');stopSpeech();
+        if(!audio.playVoice('voice-gameover',.64,true))speak('そこまで！',true);
+        notify('そこまで！',1650);
         const rank=score>=25000?'塾長級':score>=14000?'五段':score>=8000?'三段':
             score>=5000?'初段':score>=2500?'一級':score>=1000?'五級':'十級';
         ui.panel.innerHTML='<div class="panel-kicker">一本勝負・勝負あり</div>'+
@@ -1874,9 +1914,16 @@
         ui.sound.textContent=muted?'♫ OFF':'♫ ON';ui.sound.classList.toggle('off',muted);
     });
     ui.voice.addEventListener('click',()=>{
-        voiceEnabled=!voiceEnabled;if(!voiceEnabled)stopSpeech();
+        voiceEnabled=!voiceEnabled;
+        if(!voiceEnabled){
+            stopSpeech();
+            if(audio.voiceSource){
+                try{audio.voiceSource.stop()}catch(_){}
+                audio.voiceSource=null;
+            }
+        }
         ui.voice.textContent=voiceEnabled?'声 ON':'声 OFF';ui.voice.classList.toggle('off',!voiceEnabled);
-        if(voiceEnabled)speak('セイッ！',true);
+        if(voiceEnabled&&!audio.playVoice('voice-drop1',.48,true))speak('セイッ！',true);
     });
     // タッチのpointerdownはiOSでメディア再生許可と見なされない場合がある。
     // 指を離すtouchendとボタンのclickで再試行（Androidの操作・音は変更しない）。
