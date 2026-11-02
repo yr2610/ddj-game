@@ -1,0 +1,27 @@
+name: Inspect voice source page
+on:
+  push:
+    paths:
+      - .github/workflows/voice-inspect.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect voice page links without downloading audio
+        shell: bash
+        run: |
+          python - <<'PY'
+          import urllib.request,re,html
+          page="https://soundeffect-lab.info/sound/voice/game.html"
+          with urllib.request.urlopen(urllib.request.Request(page,headers={"User-Agent":"Mozilla/5.0"}),timeout=30) as r:
+              src=r.read().decode("utf-8","replace")
+          print("source-page status OK, bytes",len(src))
+          for needle in ("とう！","ぐっ！","ぐああっ！","ぐああーーっ！"):
+              at=src.find(needle)
+              if at<0: at=src.find(html.escape(needle))
+              print("LABEL",needle,"offset",at)
+              if at>=0: print("SNIPPET",re.sub(r"\\s+"," ",src[max(0,at-550):at+380])[:950])
+          print("MP3 PATH SAMPLES",re.findall(r"[^\\s\\\"']+\\.mp3",src)[:12])
+          PY
