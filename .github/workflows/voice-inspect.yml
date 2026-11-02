@@ -1,27 +1,65 @@
-name: Inspect voice source page
+name: Import permitted game voice assets
 on:
   push:
     paths:
       - .github/workflows/voice-inspect.yml
 permissions:
-  contents: read
+  contents: write
 jobs:
-  inspect:
+  import:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect voice page links without downloading audio
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Fetch selected files via the publisher's official voice page
         shell: bash
         run: |
           python - <<'PY'
-          import urllib.request,re,html
+          from pathlib import Path
+          import urllib.request, urllib.parse, re, html, hashlib
           page="https://soundeffect-lab.info/sound/voice/game.html"
-          with urllib.request.urlopen(urllib.request.Request(page,headers={"User-Agent":"Mozilla/5.0"}),timeout=30) as r:
-              src=r.read().decode("utf-8","replace")
-          print("source-page status OK, bytes",len(src))
-          for needle in ("とう！","ぐっ！","ぐああっ！","ぐああーーっ！"):
-              at=src.find(needle)
-              if at<0: at=src.find(html.escape(needle))
-              print("LABEL",needle,"offset",at)
-              if at>=0: print("SNIPPET",re.sub(r"\\s+"," ",src[max(0,at-550):at+380])[:950])
-          print("MP3 PATH SAMPLES",re.findall(r"[^\\s\\\"']+\\.mp3",src)[:12])
+          header={"User-Agent":"Mozilla/5.0 (compatible; game-asset-import/1.0)"}
+          req=urllib.request.Request(page,headers=header)
+          with urllib.request.urlopen(req,timeout=30) as response:
+              source=response.read().decode("utf-8","replace")
+          options={}
+          for row in re.findall(r"<li\\b[^>]*>(.*?)</li>",source,re.DOTALL|re.IGNORECASE):
+              title=re.search(r"<span>\\s*「([^」]+)」\\s*</span>",row,re.DOTALL)
+              download=re.search(r"<a\\s+[^>]*href=[\\"']([^\\"']+\\.mp3)[\\"']",row,re.IGNORECASE)
+              if title and download:
+                  options[html.unescape(title.group(1)).strip()]=download.group(1)
+          voices={
+              "とう！":"voice-drop1.mp3",
+              "くらえ！":"voice-drop2.mp3",
+              "ぐっ！":"voice-fail.mp3",
+              "ぐああっ！":"voice-heavy.mp3",
+              "ぐああーーっ！":"voice-gameover.mp3",
+              "やった！":"voice-victory.mp3",
+          }
+          out=Path("assets/audio")
+          out.mkdir(parents=True,exist_ok=True)
+          for label,filename in voices.items():
+              if label not in options: raise RuntimeError("Missing official voice label: "+label)
+              href=options[label].replace("mp3//","mp3/")
+              url=urllib.parse.urljoin(page,href)
+              if urllib.parse.urlparse(url).hostname!="soundeffect-lab.info":raise RuntimeError("Unexpected host")
+              with urllib.request.urlopen(urllib.request.Request(url,headers=header),timeout=30) as response:
+                  mp3=response.read()
+              if len(mp3)<1500 or not (mp3[:3]==b"ID3" or (mp3[0]==255 and mp3[1]&224==224)):
+                  raise RuntimeError("Download was not a valid MP3: "+label)
+              (out/filename).write_bytes(mp3)
+              print("Verified official MP3",label,filename,len(mp3),hashlib.sha256(mp3).hexdigest()[:12])
           PY
+      - name: Commit the source MP3s into the game as game-use assets
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets/audio/voice-*.mp3
+          if git diff --cached --quiet; then
+            echo 'Voice assets already present.'
+          else
+            git commit -m '効果音ラボの男性戦闘ボイスをゲーム用素材として追加'
+            git push origin HEAD:main
+          fi
