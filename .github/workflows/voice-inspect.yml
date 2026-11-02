@@ -24,9 +24,9 @@ jobs:
           with urllib.request.urlopen(req,timeout=30) as response:
               source=response.read().decode("utf-8","replace")
           options={}
-          for row in re.findall(r"<li\\b[^>]*>(.*?)</li>",source,re.DOTALL|re.IGNORECASE):
-              title=re.search(r"<span>\\s*「([^」]+)」\\s*</span>",row,re.DOTALL)
-              download=re.search(r"<a\\s+[^>]*href=[\\"']([^\\"']+\\.mp3)[\\"']",row,re.IGNORECASE)
+          for row in re.findall('<li[^>]*>(.*?)</li>',source,re.DOTALL|re.IGNORECASE):
+              title=re.search('<span[^>]*>「([^」]+)」</span>',row,re.DOTALL)
+              download=re.search('href="([^"]+[.]mp3)"',row,re.IGNORECASE)
               if title and download:
                   options[html.unescape(title.group(1)).strip()]=download.group(1)
           voices={
