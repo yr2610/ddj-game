@@ -643,9 +643,29 @@
         if(mode==='final'||mode==='final-intro')updateFinalHud();
     }
     function updateNext() {
-        const d=TIERS[nextLevel];
-        ui.next.textContent=d.name;ui.next.style.background=d.fill;
+        const level=nextLevel,d=TIERS[level];
+        // NEXTでも盤面と同じ玉画像をそのまま使用する。色の近似は行わない。
+        // 読み込み中・画像エラー時のみ従来の文字表示に戻る。
+        ui.next.dataset.previewLevel=String(level);
+        ui.next.classList.remove('has-image');
+        ui.next.textContent=d.name;
+        ui.next.style.background=d.fill;
         ui.next.style.fontSize=d.name.length>=3?'11px':d.name.length===2?'14px':'17px';
+        const original=ballSprites[FINAL_BALL_ART[level]];
+        if(!original)return;
+        const preview=new Image();
+        preview.alt='';
+        preview.decoding='async';
+        preview.onload=()=>{
+            // 画像読込中に次の玉が変わっても、古い玉を誤表示しない。
+            if(ui.next.dataset.previewLevel!==String(level))return;
+            if(preview.naturalWidth!==192||preview.naturalHeight!==192)return;
+            ui.next.replaceChildren(preview);
+            ui.next.classList.add('has-image');
+            ui.next.style.background='#17151a';
+        };
+        preview.onerror=()=>{ /* フォールバックの漢字を維持 */ };
+        preview.src=original.src;
     }
     function canMerge(a,b) {
         return a.game?.alive&&b.game?.alive&&
@@ -739,6 +759,9 @@
         ui.rushPanel.style.display=active?'none':'';
         ui.finalPanel.style.display=active?'':'none';
         if(active){
+            // 読み込み途中のNEXT玉が最終戦HUDを上書きしないようにする。
+            ui.next.dataset.previewLevel='final';
+            ui.next.classList.remove('has-image');
             ui.next.textContent='拳';ui.next.style.background='#c75b3d';ui.next.style.fontSize='15px';
             updateFinalHud();
         }
